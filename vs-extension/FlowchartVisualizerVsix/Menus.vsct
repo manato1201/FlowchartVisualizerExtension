@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <Extern href="stdidcmd.h"/>
+  <Extern href="vsshlids.h"/>
+
+  <Commands package="guidFlowchartVisualizerPackage">
+    <Groups>
+      <Group guid="guidFlowchartVisualizerCommandSet" id="FlowchartMenuGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN"/>
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <Button guid="guidFlowchartVisualizerCommandSet" id="GenerateFlowchartCommandId" priority="0x0100" type="Button">
+        <Parent guid="guidFlowchartVisualizerCommandSet" id="FlowchartMenuGroup" />
+        <Strings>
+          <ButtonText>Flowchart: 選択メソッドを可視化</ButtonText>
+        </Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidFlowchartVisualizerPackage" value="{f1e2d3c4-b5a6-4978-8765-4321fedcba98}" />
+
+    <GuidSymbol name="guidFlowchartVisualizerCommandSet" value="{a1b2c3d4-e5f6-4789-9abc-def012345678}">
+      <IDSymbol name="FlowchartMenuGroup" value="0x1020" />
+      <IDSymbol name="GenerateFlowchartCommandId" value="0x0100" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

@@ -1,0 +1,16 @@
+{
+  "name": "@flowchart-visualizer/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FlowchartIR schema, Mermaid emitter, and shared offline webview bundle used by all host adapters (VSCode/Visual Studio/Rider).",
+  "scripts": {
+    "fetch-mermaid": "node scripts/fetch-mermaid.js",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "mermaid": "^10.9.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

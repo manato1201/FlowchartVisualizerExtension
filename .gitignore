@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+*.vsix
+.vs/
+bin/
+obj/
+build/
+.gradle/
+.idea/
+*.iml
+core/webview-bundle/mermaid.min.js
+vscode-extension/wasm/
+vscode-extension/webview-bundle/
