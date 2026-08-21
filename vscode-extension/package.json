@@ -1,0 +1,98 @@
+{
+  "name": "flowchart-visualizer",
+  "displayName": "Flowchart Visualizer",
+  "description": "書いたコードの制御フローをエディタ上でフローチャートとして可視化する",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "flowchart-visualizer",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/vscode-extension/src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "flowchart.generateFromFile",
+        "title": "Flowchart: ファイル全体からフローチャートを生成"
+      },
+      {
+        "command": "flowchart.generateFromSelection",
+        "title": "Flowchart: 選択範囲からフローチャートを生成"
+      },
+      {
+        "command": "flowchart.exportSvg",
+        "title": "Flowchart: SVGとしてエクスポート"
+      },
+      {
+        "command": "flowchart.exportPng",
+        "title": "Flowchart: PNGとしてエクスポート"
+      },
+      {
+        "command": "flowchart.copyMermaid",
+        "title": "Flowchart: Mermaidテキストをコピー"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "flowchart.generateFromFile"
+        },
+        {
+          "command": "flowchart.generateFromSelection",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "flowchart.exportSvg"
+        },
+        {
+          "command": "flowchart.exportPng"
+        },
+        {
+          "command": "flowchart.copyMermaid"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "flowchart.generateFromFile",
+          "group": "flowchart@1"
+        },
+        {
+          "command": "flowchart.generateFromSelection",
+          "when": "editorHasSelection",
+          "group": "flowchart@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Flowchart Visualizer",
+      "properties": {
+        "flowchart.autoRefresh": {
+          "type": "boolean",
+          "default": false,
+          "description": "ファイル保存時に自動でフローチャートを再生成する"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "fetch-wasm": "node scripts/fetch-wasm.js",
+    "copy-bundle": "node scripts/copy-bundle.js",
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "postinstall": "node scripts/fetch-wasm.js",
+    "package": "npm run fetch-wasm && npm run copy-bundle && npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.22.6"
+  }
+}

@@ -1,0 +1,28 @@
+<idea-plugin>
+    <id>com.flowchartvisualizer.rider</id>
+    <name>Flowchart Visualizer</name>
+    <vendor>FlowchartVisualizer</vendor>
+
+    <description><![CDATA[
+        書いたコードの制御フローをRider上でフローチャートとして可視化する。
+    ]]></description>
+
+    <!-- com.intellij.modules.rider: Riderのみを対象とする(汎用IntelliJ Platformではなく) -->
+    <depends>com.intellij.modules.rider</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Flowchart"
+                    anchor="right"
+                    factoryClass="com.flowchartvisualizer.rider.FlowchartToolWindowFactory"/>
+        <notificationGroup id="FlowchartVisualizer" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <action id="FlowchartVisualizer.Generate"
+                class="com.flowchartvisualizer.rider.FlowchartAction"
+                text="Flowchart: 選択メソッドを可視化"
+                description="現在のカーソル位置を含むメソッドの制御フローをフローチャートとして可視化する">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0: FlowchartExtractor.Tests用。net472: Visual Studio 2022自体が.NET Framework
+         プロセスで動作するため、in-proc VSPackage(FlowchartVisualizerVsix)から参照するために必要。 -->
+    <TargetFrameworks>net8.0;net472</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FlowchartVisualizer.Extractor</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.9.2" />
+  </ItemGroup>
+
+</Project>

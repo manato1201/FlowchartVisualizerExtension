@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Visual Studio 2022自体が.NET Frameworkプロセスで動作するため、in-proc VSPackageは
+         net472をターゲットにする(net8.0では前述のシェルCOM相互運用アセンブリが解決できない)。 -->
+    <TargetFramework>net472</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FlowchartVisualizer.Vsix</RootNamespace>
+    <GeneratePkgDefFile>true</GeneratePkgDefFile>
+    <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
+    <IncludeDebugSymbolsInVSIXContainer>false</IncludeDebugSymbolsInVSIXContainer>
+    <IncludeDebugSymbolsInLocalVSIXDeployment>false</IncludeDebugSymbolsInLocalVSIXDeployment>
+    <CopyBuildOutputToOutputDirectory>true</CopyBuildOutputToOutputDirectory>
+    <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
+    <!-- VSSDKには対応しないSDKスタイルプロジェクトの制約回避 -->
+    <StartAction>Program</StartAction>
+    <StartProgram Condition="'$(DevEnvDir)' != ''">$(DevEnvDir)devenv.exe</StartProgram>
+    <StartArguments>/rootsuffix Exp</StartArguments>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.9.37000" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="4.9.2" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.ComponentModelHost" Version="17.11.260" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.Editor" Version="17.11.260" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.TextManager.Interop" Version="17.9.37000" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VisualStudio.Utilities" Version="17.11.40262" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.9.3169" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.9.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- OleMenuCommandServiceの基底(MenuCommandService)はSystem.Design.dll(GAC)にある。
+         SDKスタイルnet472プロジェクトは自動参照しないため明示する。 -->
+    <Reference Include="System.Design" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlowchartExtractor\FlowchartExtractor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- core/webview-bundle/mermaid.min.js は core ディレクトリで npm install した後、
+         "npm run fetch-mermaid" を実行して事前生成しておく必要がある(core/scripts/fetch-mermaid.js参照)。 -->
+    <None Include="..\..\core\webview-bundle\**\*.*" Visible="false">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <Link>webview-bundle\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+</Project>
