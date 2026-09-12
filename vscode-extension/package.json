@@ -34,6 +34,10 @@
       {
         "command": "flowchart.copyMermaid",
         "title": "Flowchart: Mermaidテキストをコピー"
+      },
+      {
+        "command": "flowchart.generateMagicCircle",
+        "title": "Flowchart: 魔方陣として書き出し(エンタメ)"
       }
     ],
     "menus": {
@@ -53,6 +57,9 @@
         },
         {
           "command": "flowchart.copyMermaid"
+        },
+        {
+          "command": "flowchart.generateMagicCircle"
         }
       ],
       "editor/context": [
@@ -64,6 +71,10 @@
           "command": "flowchart.generateFromSelection",
           "when": "editorHasSelection",
           "group": "flowchart@2"
+        },
+        {
+          "command": "flowchart.generateMagicCircle",
+          "group": "flowchart@3"
         }
       ]
     },
