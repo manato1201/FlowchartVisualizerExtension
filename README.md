@@ -38,6 +38,19 @@ npm run package   # tree-sitter wasm取得 + 共有バンドル複製 + コン�
 F5起動すると、Extension Development Hostが開く。C#/TS/JSファイルを開き、コマンドパレットまたは
 右クリックメニューから `Flowchart: ファイル全体からフローチャートを生成` を実行する。
 
+## おまけ: 魔方陣化(エンタメ用)
+
+`core/render/magic-circle-emitter.ts`は同じ`FlowchartIR`を、姉妹リポジトリ
+[`MagicCircleGenerator`](../MagicCircleGenerator)が読める魔方陣レシピ(JSON)に変換する
+もう1つのエミッター。Mermaidフローチャートの代替ではなく、あくまでエンタメ用途。
+マッピング仕様は [`core/render/MAGIC_CIRCLE_MAPPING_SPEC.md`](core/render/MAGIC_CIRCLE_MAPPING_SPEC.md)、
+プロトタイプの検証手順は`MagicCircleGenerator/README.md`の該当節を参照。
+
+```bash
+cd core
+node scripts/smoke-test-magic-circle.js   # レシピJSONをdist/output/へ生成
+```
+
 ## 各ホストの詳細
 
 - Visual Studio拡張のビルド手順・既知の制約・Roslyn `ControlFlowGraph` スパイク検証結果は

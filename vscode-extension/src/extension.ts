@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { emitMagicCircle } from "../../core/render/magic-circle-emitter";
 import { emitMermaid } from "../../core/render/mermaid-emitter";
 import { extractFlowchartIR } from "./flowExtractor";
 import {
@@ -54,6 +55,13 @@ export function activate(context: vscode.ExtensionContext): void {
         "Mermaidテキストをクリップボードにコピーしました",
       );
     }),
+
+    vscode.commands.registerCommand(
+      "flowchart.generateMagicCircle",
+      async () => {
+        await generateMagicCircleAndSave(context);
+      },
+    ),
 
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
       const config = vscode.workspace.getConfiguration();
@@ -170,4 +178,57 @@ async function exportFlowchart(
   const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
   await vscode.workspace.fs.writeFile(uri, Buffer.from(base64, "base64"));
   vscode.window.showInformationMessage(`PNGを書き出しました: ${uri.fsPath}`);
+}
+
+/**
+ * アクティブエディタ(選択範囲があればそれ、なければファイル全体)からFlowchartIRを抽出し、
+ * core/render/magic-circle-emitter.ts で魔方陣レシピ(JSON)に変換して保存する。
+ * エンタメ用途(core/render/MAGIC_CIRCLE_MAPPING_SPEC.md参照)。保存したJSONは
+ * MagicCircleGeneratorアプリの「インポート」ボタンからそのまま読み込める。
+ */
+async function generateMagicCircleAndSave(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage("アクティブなエディタがありません");
+    return;
+  }
+
+  const selection = editor.selection.isEmpty ? undefined : editor.selection;
+
+  pendingAnalysis?.cancel();
+  pendingAnalysis = new vscode.CancellationTokenSource();
+
+  try {
+    const ir = await extractFlowchartIR(
+      context.extensionUri,
+      editor.document,
+      selection,
+      pendingAnalysis.token,
+    );
+    if (pendingAnalysis.token.isCancellationRequested) return;
+
+    const composition = emitMagicCircle(ir);
+
+    const uri = await vscode.window.showSaveDialog({
+      filters: { JSON: ["json"] },
+      saveLabel: "魔方陣レシピを保存",
+      defaultUri: vscode.Uri.file(`${composition.compositionId}.json`),
+    });
+    if (!uri) return;
+
+    await vscode.workspace.fs.writeFile(
+      uri,
+      Buffer.from(JSON.stringify(composition, null, 2), "utf-8"),
+    );
+    vscode.window.showInformationMessage(
+      `魔方陣レシピを書き出しました: ${uri.fsPath}(MagicCircleGeneratorの「インポート」から読み込めます)`,
+    );
+  } catch (err) {
+    if (err instanceof vscode.CancellationError) return;
+    vscode.window.showErrorMessage(
+      `魔方陣の生成に失敗しました: ${(err as Error).message}`,
+    );
+  }
 }
