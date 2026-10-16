@@ -6,12 +6,19 @@
  * 各ホストアダプタはネイティブ解析結果をこの型に変換する責務のみを負う。
  */
 
-export type NodeKind = "start" | "end" | "process" | "decision" | "loop" | "ioOperation";
+export type NodeKind =
+  "start" | "end" | "process" | "decision" | "loop" | "ioOperation";
 
 export interface SourceRange {
   startLine: number;
   endLine: number;
 }
+
+/**
+ * 差分表示(X3)用の状態。抽出器は設定しない。`core/diff/ir-diff.ts` が付与する任意フィールドで、
+ * 通常のIRには現れない(ホスト間で受け渡す基本スキーマは変えない)。
+ */
+export type DiffStatus = "added" | "removed" | "changed" | "unchanged";
 
 export interface FlowchartNode {
   /** アダプタ側で採番する一意なID。例: "n1" */
@@ -20,6 +27,9 @@ export interface FlowchartNode {
   /** 例: "if (isGrounded)" */
   label: string;
   sourceRange: SourceRange;
+  diff?: DiffStatus;
+  /** diff === "changed" のときだけ、変更前のラベル(ツールチップで見せる) */
+  previousLabel?: string;
 }
 
 export type EdgeLabel = "true" | "false" | "";
@@ -30,6 +40,7 @@ export interface FlowchartEdge {
   /** FlowchartNode.id */
   to: string;
   label?: EdgeLabel;
+  diff?: DiffStatus;
 }
 
 export interface FlowchartIR {

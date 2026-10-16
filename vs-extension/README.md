@@ -45,3 +45,20 @@ dotnet build
 [`../SPIKE_RESULTS.md`](../SPIKE_RESULTS.md) を参照。結論: **採用可**。
 `ControlFlowGraphExtractor`を第一候補、`SyntaxWalkerExtractor`をフォールバックとして
 `FlowchartExtractor.Extract()`が優先順位を実装している。
+
+## 2026-10 改善の反映(共有Webviewバンドルの新UI)
+
+共有バンドル(`core/webview-bundle/`)が新しくなったため、VSIX側は次の3点だけをホスト固有として持つ:
+
+- **送信口**: `window.flowchartHostPost` を WebView2 の `chrome.webview.postMessage` に繋ぐスクリプトを
+  `AddScriptToExecuteOnDocumentCreatedAsync` で注入(バンドルは `chrome.webview` を直接参照しない)。
+- **IRの受け渡し**: Mermaidテキストではなく `FlowchartIR` のJSON(`FlowchartExtractor/IrJson.cs`)を渡す。
+  フロー/呼び出し/状態のビュー切替・ツールチップ・ジャンプはバンドル側が行う。
+- **テーマ**: WebView2 は `--vscode-*` のCSS変数を持たないため、VS のテーマ色
+  (`VSColorTheme`)を同じ変数名の値として `theme` メッセージで送る。
+  `Profile.PreferredColorScheme` も VS のテーマに合わせる。
+
+検証状況: `IrJson` と Mermaid 出力(TS版とバイト同一の決めごと表・エスケープ)は `dotnet test` で検証済み。
+VSIX は `dotnet build` でコンパイルできることまで確認。**Visual Studio 2022 での起動・WebView2 内の実表示は未確認**
+(実機が必要。`VSColorTheme` の色キーがテーマ全体を網羅しているかも実機で見る必要がある)。
+ジャンプは `DTE`(`ItemOperations.OpenFile` + `GotoLine`)で行う。HEAD差分・analysis.json は未対応。

@@ -43,3 +43,17 @@ cd rider-plugin
 ./gradlew buildPlugin   # ビルド
 ./gradlew runIde        # Riderのサンドボックスインスタンスを起動して動作確認
 ```
+
+## 2026-10 改善の反映(共有Webviewバンドルの新UI)
+
+Visual Studio 側と同じ方針で、ホスト固有の部分を `FlowchartToolWindowFactory.kt` に閉じた:
+
+- **送信口**: `JBCefJSQuery` を作り、ページの読み込み完了時に `window.flowchartHostPost` を定義する。
+- **IRの受け渡し**: `IrJson.kt`(依存なしの手書きJSON。C#版 `IrJson.cs` と同じ出力)で `FlowchartIr` を渡す。
+- **テーマ**: JCEF は `--vscode-*` を持たないため、`UIUtil` / `JBColor` の色を `theme` メッセージで送る。
+- ジャンプは `OpenFileDescriptor.navigate`、コピーは `CopyPasteManager`、画像保存は `FileSaverDescriptor`。
+
+**未検証**: この環境には JDK / Gradle が無く、上記の Kotlin は一度もコンパイルしていない。
+IntelliJ Platform SDK 2023.3 の API 規約に沿って書いたが、シグネチャの差(`JBCefJSQuery.addHandler` の戻り値型、
+`FileSaverDescriptor` / `save()` の引数、Gson の `JsonParser.parseString` が使えるプラットフォーム版か 等)で
+最初のビルドが通らない可能性がある。実機で `./gradlew buildPlugin` を通すところから始めること。

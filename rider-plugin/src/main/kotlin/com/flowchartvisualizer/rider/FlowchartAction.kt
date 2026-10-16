@@ -23,15 +23,17 @@ class FlowchartAction : AnAction() {
         val offset = e.getData(CommonDataKeys.EDITOR)?.caretModel?.offset ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val mermaidText = ReadAction.compute<String?, Throwable> {
+            // IR と関数名・ファイルパスを取り出す(PSIはReadActionの中でだけ触る)
+            val result = ReadAction.compute<Triple<FlowchartIr, String, String?>?, Throwable> {
                 val method = PsiTreeUtil.getParentOfType(psiFile.findElementAt(offset), PsiMethod::class.java)
                     ?: return@compute null
-                val ir = JavaPsiControlFlowExtractor.extract(method, psiFile.virtualFile?.path ?: psiFile.name)
-                MermaidEmitter.emit(ir)
+                val path = psiFile.virtualFile?.path
+                val ir = JavaPsiControlFlowExtractor.extract(method, path ?: psiFile.name)
+                Triple(ir, method.name + "()", path)
             }
 
             ApplicationManager.getApplication().invokeLater {
-                if (mermaidText == null) {
+                if (result == null) {
                     // 現時点でPSIベース解析が効くのはJava(PsiMethod)のみ。
                     // C#(Riderの場合はReSharperバックエンド経由)等の未対応言語では
                     // 通知のみ行い、例外で落とさない(rider-plugin/RIDER_NOTES.md参照)。
@@ -45,7 +47,7 @@ class FlowchartAction : AnAction() {
                         .notify(project)
                     return@invokeLater
                 }
-                FlowchartToolWindowFactory.render(project, mermaidText)
+                FlowchartToolWindowFactory.renderIr(project, result.first, result.second, result.third)
             }
         }
     }

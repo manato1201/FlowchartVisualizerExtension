@@ -1,0 +1,280 @@
+{
+  "metadata": {
+    "generated_at": "2026-10-15T00:43:22.991714+00:00",
+    "repo_name": ".codeboarding-target",
+    "depth_level": 2,
+    "depth_cap": 2
+  },
+  "description": "The CodeBoarding root scope coordinates static code analysis, LLM-driven architectural diagram planning, codebase health auditing, and documentation rendering. Execution flows from CLI and workflow orchestration entry points through static language analyzers, tree-planning LLM agents, and diagram generators, supported by shared tool installation, repository inspection, and telemetry infrastructure.",
+  "files": {},
+  "methods_index": {
+    "static_analyzer/__init__.py|static_analyzer.__init__.EngineConfig": {
+      "file_path": "static_analyzer/__init__.py",
+      "qualified_name": "static_analyzer.__init__.EngineConfig",
+      "start_line": 46,
+      "end_line": 62,
+      "type": "CLASS",
+      "content_hash": "ddd2f48bc2c94c3f"
+    },
+    "static_analyzer/__init__.py|static_analyzer.__init__.max_concurrent_engines": {
+      "file_path": "static_analyzer/__init__.py",
+      "qualified_name": "static_analyzer.__init__.max_concurrent_engines",
+      "start_line": 72,
+      "end_line": 88,
+      "type": "FUNCTION",
+      "content_hash": "cf62edce74083b5a"
+    },
+    "static_analyzer/__init__.py|static_analyzer.__init__.lsp_request_timeout_override": {
+      "file_path": "static_analyzer/__init__.py",
+      "qualified_name": "static_analyzer.__init__.lsp_request_timeout_override",
+      "start_line": 91,
+      "end_line": 106,
+      "type": "FUNCTION",
+      "content_hash": "f04fe028503fafc9"
+    },
+    "static_analyzer/analysis_cache.py|static_analyzer.analysis_cache.StaticAnalysisCache": {
+      "file_path": "static_analyzer/analysis_cache.py",
+      "qualified_name": "static_analyzer.analysis_cache.StaticAnalysisCache",
+      "start_line": 81,
+      "end_line": 302,
+      "type": "CLASS",
+      "content_hash": "4b7fbcc4a7828960"
+    },
+    "static_analyzer/analysis_cache.py|static_analyzer.analysis_cache.StaticAnalysisCache.__init__": {
+      "file_path": "static_analyzer/analysis_cache.py",
+      "qualified_name": "static_analyzer.analysis_cache.StaticAnalysisCache.__init__",
+      "start_line": 90,
+      "end_line": 92,
+      "type": "METHOD",
+      "content_hash": "984b444dd520ad74"
+    },
+    "static_analyzer/analysis_cache.py|static_analyzer.analysis_cache.StaticAnalysisCache._to_relative": {
+      "file_path": "static_analyzer/analysis_cache.py",
+      "qualified_name": "static_analyzer.analysis_cache.StaticAnalysisCache._to_relative",
+      "start_line": 94,
+      "end_line": 95,
+      "type": "METHOD",
+      "content_hash": "32590483a57001ac"
+    },
+    "static_analyzer/__init__.py|static_analyzer.__init__.StaticAnalyzer": {
+      "file_path": "static_analyzer/__init__.py",
+      "qualified_name": "static_analyzer.__init__.StaticAnalyzer",
+      "start_line": 286,
+      "end_line": 1172,
+      "type": "CLASS",
+      "content_hash": "92365e3a43900df5"
+    },
+    "static_analyzer/analysis_result.py|static_analyzer.analysis_result.StaticAnalysisResults": {
+      "file_path": "static_analyzer/analysis_result.py",
+      "qualified_name": "static_analyzer.analysis_result.StaticAnalysisResults",
+      "start_line": 174,
+      "end_line": 357,
+      "type": "CLASS",
+      "content_hash": "dee0601a2ae148ca"
+    },
+    "diagram_analysis/__init__.py|diagram_analysis.__init__.__getattr__": {
+      "file_path": "diagram_analysis/__init__.py",
+      "qualified_name": "diagram_analysis.__init__.__getattr__",
+      "start_line": 6,
+      "end_line": 30,
+      "type": "FUNCTION",
+      "content_hash": "0cf0268737c7eee4"
+    },
+    "diagram_analysis/analysis_json.py|diagram_analysis.analysis_json.RelationEdgeJson": {
+      "file_path": "diagram_analysis/analysis_json.py",
+      "qualified_name": "diagram_analysis.analysis_json.RelationEdgeJson",
+      "start_line": 23,
+      "end_line": 27,
+      "type": "CLASS",
+      "content_hash": "ed1c0023a3580fcf"
+    },
+    "diagram_analysis/analysis_json.py|diagram_analysis.analysis_json.RelationJson": {
+      "file_path": "diagram_analysis/analysis_json.py",
+      "qualified_name": "diagram_analysis.analysis_json.RelationJson",
+      "start_line": 30,
+      "end_line": 43,
+      "type": "CLASS",
+      "content_hash": "c563297566225048"
+    },
+    "diagram_analysis/analysis_json.py|diagram_analysis.analysis_json.ComponentJson": {
+      "file_path": "diagram_analysis/analysis_json.py",
+      "qualified_name": "diagram_analysis.analysis_json.ComponentJson",
+      "start_line": 46,
+      "end_line": 68,
+      "type": "CLASS",
+      "content_hash": "7de31b3b40d5b229"
+    },
+    "diagram_analysis/cluster_relations.py|diagram_analysis.cluster_relations.build_component_relations": {
+      "file_path": "diagram_analysis/cluster_relations.py",
+      "qualified_name": "diagram_analysis.cluster_relations.build_component_relations",
+      "start_line": 50,
+      "end_line": 88,
+      "type": "FUNCTION",
+      "content_hash": "2b8eebf02ba7d866"
+    },
+    "diagram_analysis/diagram_generator.py|diagram_analysis.diagram_generator.DiagramGenerator": {
+      "file_path": "diagram_analysis/diagram_generator.py",
+      "qualified_name": "diagram_analysis.diagram_generator.DiagramGenerator",
+      "start_line": 571,
+      "end_line": 1787,
+      "type": "CLASS",
+      "content_hash": "b5d8c25a50c8321f"
+    }
+  },
+  "components": [
+    {
+      "name": "Static Analysis Engine",
+      "description": "Parses multi-language source code, manages language server adapters, builds call graphs and control flow hierarchies, and coordinates incremental analysis.",
+      "component_id": "1",
+      "key_entities": [
+        {
+          "qualified_name": "static_analyzer.__init__.StaticAnalyzer",
+          "reference_file": "static_analyzer/__init__.py",
+          "reference_start_line": 286,
+          "reference_end_line": 1172
+        },
+        {
+          "qualified_name": "static_analyzer.analysis_result.StaticAnalysisResults",
+          "reference_file": "static_analyzer/analysis_result.py",
+          "reference_start_line": 174,
+          "reference_end_line": 357
+        }
+      ],
+      "file_methods": [
+        {
+          "file_path": "static_analyzer/__init__.py",
+          "methods": [
+            "static_analyzer.__init__.EngineConfig",
+            "static_analyzer.__init__.max_concurrent_engines",
+            "static_analyzer.__init__.lsp_request_timeout_override"
+          ]
+        },
+        {
+          "file_path": "static_analyzer/analysis_cache.py",
+          "methods": [
+            "static_analyzer.analysis_cache.StaticAnalysisCache",
+            "static_analyzer.analysis_cache.StaticAnalysisCache.__init__",
+            "static_analyzer.analysis_cache.StaticAnalysisCache._to_relative"
+          ]
+        }
+      ],
+      "components": [
+        {
+          "name": "Language Engine and LSP Orchestration",
+          "description": "Orchestrates language-specific adapters and LSP clients to inspect source files, construct call graphs, and convert AST data into model representations.",
+          "component_id": "1.1",
+          "key_entities": [
+            {
+              "qualified_name": "static_analyzer.__init__.StaticAnalyzer",
+              "reference_file": "static_analyzer/__init__.py",
+              "reference_start_line": 286,
+              "reference_end_line": 1172
+            }
+          ],
+          "file_methods": [
+            {
+              "file_path": "static_analyzer/__init__.py",
+              "methods": [
+                "static_analyzer.__init__.EngineConfig",
+                "static_analyzer.__init__.max_concurrent_engines"
+              ]
+            }
+          ],
+          "components": [],
+          "components_relations": []
+        }
+      ],
+      "components_relations": []
+    },
+    {
+      "name": "Diagram Generation and Health Orchestration",
+      "description": "Coordinates architectural diagram construction, scope assembly, incremental updates, code health audits, and telemetry reporting.",
+      "component_id": "2",
+      "key_entities": [
+        {
+          "qualified_name": "diagram_analysis.cluster_relations.build_component_relations",
+          "reference_file": "diagram_analysis/cluster_relations.py",
+          "reference_start_line": 50,
+          "reference_end_line": 88
+        },
+        {
+          "qualified_name": "diagram_analysis.diagram_generator.DiagramGenerator",
+          "reference_file": "diagram_analysis/diagram_generator.py",
+          "reference_start_line": 571,
+          "reference_end_line": 1787
+        }
+      ],
+      "file_methods": [
+        {
+          "file_path": "diagram_analysis/__init__.py",
+          "methods": [
+            "diagram_analysis.__init__.__getattr__"
+          ]
+        },
+        {
+          "file_path": "diagram_analysis/analysis_json.py",
+          "methods": [
+            "diagram_analysis.analysis_json.RelationEdgeJson",
+            "diagram_analysis.analysis_json.RelationJson",
+            "diagram_analysis.analysis_json.ComponentJson"
+          ]
+        }
+      ],
+      "components": [
+        {
+          "name": "Diagram and Scope Analysis Orchestrator",
+          "description": "Orchestrates full and incremental architectural diagram generation, clustering scope assembly, update planning, and coverage reporting.",
+          "component_id": "2.1",
+          "key_entities": [
+            {
+              "qualified_name": "diagram_analysis.diagram_generator.DiagramGenerator",
+              "reference_file": "diagram_analysis/diagram_generator.py",
+              "reference_start_line": 571,
+              "reference_end_line": 1787
+            }
+          ],
+          "file_methods": [
+            {
+              "file_path": "diagram_analysis/__init__.py",
+              "methods": [
+                "diagram_analysis.__init__.__getattr__"
+              ]
+            }
+          ],
+          "components": [],
+          "components_relations": []
+        }
+      ],
+      "components_relations": []
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "scans workspace and links external calls with",
+      "src_name": "Language Engine and LSP Orchestration",
+      "dst_name": "Project Scanning and Reference Resolution",
+      "src_id": "1.1",
+      "dst_id": "1.2",
+      "evidence": "",
+      "key_edges": []
+    },
+    {
+      "relation": "references node types in",
+      "src_name": "Language Engine and LSP Orchestration",
+      "dst_name": "Component Clustering Service",
+      "src_id": "1.1",
+      "dst_id": "1.3",
+      "evidence": "",
+      "key_edges": []
+    },
+    {
+      "relation": "aggregates results into",
+      "src_name": "Language Engine and LSP Orchestration",
+      "dst_name": "Control Flow Graph and Analysis Model",
+      "src_id": "1.1",
+      "dst_id": "1.4",
+      "evidence": "",
+      "key_edges": []
+    }
+  ]
+}

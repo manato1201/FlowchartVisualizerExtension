@@ -1,0 +1,26 @@
+{
+  "metadata": { "generated_at": "2026-10-17T00:00:00+00:00", "repo_name": "fixture-repo" },
+  "description": "結合テスト用の最小の analysis.json",
+  "methods_index": {
+    "src/player.ts|player.Player.update": { "file_path": "src/player.ts", "qualified_name": "player.Player.update", "start_line": 7, "end_line": 29, "type": "METHOD" },
+    "src/player.ts|player.Player.other": { "file_path": "src/player.ts", "qualified_name": "player.Player.other", "start_line": 31, "end_line": 35, "type": "METHOD" },
+    "gone/old.ts|old.run": { "file_path": "gone/old.ts", "qualified_name": "old.run", "start_line": 1, "end_line": 5, "type": "FUNCTION" },
+    "notes.py|notes.main": { "file_path": "notes.py", "qualified_name": "notes.main", "start_line": 1, "end_line": 3, "type": "FUNCTION" }
+  },
+  "components": [
+    {
+      "name": "Player",
+      "description": "プレイヤーの更新処理",
+      "component_id": "1",
+      "key_entities": [],
+      "file_methods": [
+        { "file_path": "src/player.ts", "methods": ["player.Player.update", "player.Player.other"] },
+        { "file_path": "gone/old.ts", "methods": ["old.run"] },
+        { "file_path": "notes.py", "methods": ["notes.main"] }
+      ],
+      "components": [],
+      "components_relations": []
+    }
+  ],
+  "components_relations": []
+}

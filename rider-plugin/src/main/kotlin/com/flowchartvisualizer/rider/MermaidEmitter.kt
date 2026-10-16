@@ -6,11 +6,13 @@ package com.flowchartvisualizer.rider
  */
 object MermaidEmitter {
     private val shape: Map<NodeKind, Pair<String, String>> = mapOf(
-        NodeKind.START to ("([" to "])"),
-        NodeKind.END to ("([" to "])"),
+        // 図形の決めごと表(core/render/mermaid-emitter.ts と同一): 開始/終了=角丸、
+        // 処理=長方形、分岐=ひし形、繰り返し=六角形。
+        NodeKind.START to ("(" to ")"),
+        NodeKind.END to ("(" to ")"),
         NodeKind.PROCESS to ("[" to "]"),
         NodeKind.DECISION to ("{" to "}"),
-        NodeKind.LOOP to ("[[" to "]]"),
+        NodeKind.LOOP to ("{{" to "}}"),
         NodeKind.IO_OPERATION to ("[/" to "/]"),
     )
 
@@ -30,6 +32,7 @@ object MermaidEmitter {
         return lines.joinToString("\n")
     }
 
+    // Mermaidのエンティティ記法(core/render/mermaid-emitter.ts と同一)。
     private fun escapeLabel(label: String): String =
-        label.replace("\"", "&quot;").replace("\n", "<br/>")
+        label.replace("&", "#amp;").replace("\"", "#quot;").replace("<", "#lt;").replace(">", "#gt;").replace("\n", "<br/>")
 }

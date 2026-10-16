@@ -2,49 +2,117 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'self';"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      CSP(Content-Security-Policy)はこのファイルには書かない。ホストごとに必要な値が違うため
+      (VS Code は webview.cspSource、WebView2 / JCEF は file:// 配信)、ホストアダプタ側が
+      HTML を読み込む際に <meta> を挿入する(vscode-extension/src/webviewPanel.ts 参照)。
+      このバンドル自体はインラインスクリプトと eval を使わず、script-src 'self' 相当で動く。
+    -->
     <title>Flowchart</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        font-family: -apple-system, "Segoe UI", sans-serif;
-        background: #ffffff;
-        color: #1e1e1e;
-      }
-      #chart {
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        box-sizing: border-box;
-        padding: 12px;
-      }
-      #chart svg {
-        max-width: none;
-      }
-      #error {
-        display: none;
-        margin: 12px;
-        padding: 8px 12px;
-        border: 1px solid #d32f2f;
-        background: #fdecea;
-        color: #611a15;
-        font-size: 12px;
-        white-space: pre-wrap;
-      }
-    </style>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div id="error"></div>
-    <div id="chart"></div>
+    <!-- アイコンは線の太さが同じ1セットだけ(原則P1)。絵文字・アイコンフォントは混ぜない -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1" /></symbol>
+      <symbol id="i-copy" viewBox="0 0 16 16">
+        <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+        <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 16 16">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" />
+        <path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></symbol>
+      <symbol id="i-minus" viewBox="0 0 16 16"><path d="M3 8h10" /></symbol>
+      <symbol id="i-fit" viewBox="0 0 16 16">
+        <path
+          d="M2.5 6V3.5a1 1 0 0 1 1-1H6M10 2.5h2.5a1 1 0 0 1 1 1V6M13.5 10v2.5a1 1 0 0 1-1 1H10M6 13.5H3.5a1 1 0 0 1-1-1V10"
+        />
+      </symbol>
+      <symbol id="i-chev-down" viewBox="0 0 16 16"><path d="M3.5 6L8 10.5 12.5 6" /></symbol>
+      <symbol id="i-chev-right" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></symbol>
+      <symbol id="i-retry" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5" /></symbol>
+    </svg>
+
+    <!-- 上: ビュー切替と書き出し -->
+    <header id="topbar" class="bar">
+      <div id="views" class="segmented" role="radiogroup" aria-label="ビュー切替"></div>
+      <div class="spacer"></div>
+      <button id="btn-play" class="btn" type="button" title="実行順に再生">
+        <svg class="icon"><use href="#i-play" /></svg><span id="btn-play-label">再生</span>
+      </button>
+      <button id="btn-copy" class="btn" type="button" title="いま表示している図の Mermaid テキストをコピー">
+        <svg class="icon"><use href="#i-copy" /></svg>Mermaidをコピー
+      </button>
+      <div class="menu-wrap" id="save-wrap" data-open="false">
+        <button id="btn-save" class="btn" type="button" aria-haspopup="menu" aria-expanded="false">
+          <svg class="icon"><use href="#i-image" /></svg>画像で保存
+          <svg class="icon chev"><use href="#i-chev-down" /></svg>
+        </button>
+        <div class="menu" id="save-menu" role="menu" hidden>
+          <button type="button" role="menuitem" data-save="svg">SVG</button>
+          <button type="button" role="menuitem" data-save="png">PNG</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 帯: エラーは図の中に出さず、図の上に帯で出す -->
+    <div id="banner" role="alert" hidden>
+      <span id="banner-text"></span>
+      <button id="banner-retry" class="btn" type="button">
+        <svg class="icon"><use href="#i-retry" /></svg>再試行
+      </button>
+      <button id="banner-close" class="btn icon-only" type="button" aria-label="閉じる">
+        <svg class="icon"><use href="#i-close" /></svg>
+      </button>
+    </div>
+
+    <!-- 中央: 図(パン・ズーム) -->
+    <main id="viewport" tabindex="0" aria-label="フローチャート" data-jump="false">
+      <div id="stage"></div>
+      <div id="empty" data-no-pan>
+        <p class="lead" id="empty-lead">関数にカーソルを置くと図が出ます</p>
+        <p class="sub" id="empty-sub"></p>
+        <button id="empty-generate" class="btn" type="button">このファイルから生成</button>
+      </div>
+      <section id="overview" aria-label="全体" hidden></section>
+      <div id="minimap" aria-hidden="true" hidden>
+        <img alt="" />
+        <div class="mm-view"></div>
+      </div>
+    </main>
+
+    <!-- 下: ズーム階層(パンくず)と拡大縮小 -->
+    <footer id="bottombar" class="bar">
+      <nav id="breadcrumb" aria-label="ズーム階層"></nav>
+      <div class="spacer"></div>
+      <div id="zoom">
+        <button id="zoom-out" class="btn icon-only" type="button" title="縮小" aria-label="縮小">
+          <svg class="icon"><use href="#i-minus" /></svg>
+        </button>
+        <span id="zoom-level">100%</span>
+        <button id="zoom-fit" class="btn icon-only" type="button" title="全体を表示" aria-label="全体を表示">
+          <svg class="icon"><use href="#i-fit" /></svg>
+        </button>
+        <button id="zoom-in" class="btn icon-only" type="button" title="拡大" aria-label="拡大">
+          <svg class="icon"><use href="#i-plus" /></svg>
+        </button>
+      </div>
+    </footer>
+
+    <div id="tooltip" role="tooltip" hidden></div>
 
     <!-- CDN不使用: mermaid.min.js はローカル同梱(core/scripts/fetch-mermaid.js でnode_modulesから複製) -->
     <script src="./mermaid.min.js"></script>
+    <!-- host-shim.js: 既定は何もしない。ホストが自分のものに差し替える(WebView → ホストの送信口を定義する) -->
+    <script src="./host-shim.js"></script>
+    <script src="./views.js"></script>
+    <script src="./viewport.js"></script>
+    <script src="./motion.js"></script>
     <script src="./bridge.js"></script>
   </body>
 </html>

@@ -10,11 +10,13 @@ public static class MermaidEmitter
 {
     private static readonly Dictionary<NodeKind, (string Open, string Close)> Shape = new()
     {
-        [NodeKind.Start] = ("([", "])"),
-        [NodeKind.End] = ("([", "])"),
+        // 図形の決めごと表(core/render/mermaid-emitter.ts と同一): 開始/終了=角丸、
+        // 処理=長方形、分岐=ひし形、繰り返し=六角形。
+        [NodeKind.Start] = ("(", ")"),
+        [NodeKind.End] = ("(", ")"),
         [NodeKind.Process] = ("[", "]"),
         [NodeKind.Decision] = ("{", "}"),
-        [NodeKind.Loop] = ("[[", "]]"),
+        [NodeKind.Loop] = ("{{", "}}"),
         [NodeKind.IoOperation] = ("[/", "/]"),
     };
 
@@ -38,6 +40,7 @@ public static class MermaidEmitter
         return sb.ToString().TrimEnd('\n', '\r');
     }
 
+    // Mermaidのエンティティ記法(core/render/mermaid-emitter.ts と同一)。
     private static string EscapeLabel(string label) =>
-        label.Replace("\"", "&quot;").Replace("\n", "<br/>");
+        label.Replace("&", "#amp;").Replace("\"", "#quot;").Replace("<", "#lt;").Replace(">", "#gt;").Replace("\n", "<br/>");
 }
