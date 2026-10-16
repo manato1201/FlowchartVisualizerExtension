@@ -14,6 +14,8 @@
   "include": [
     "src/**/*.ts",
     "../core/flowchart-ir/**/*.ts",
-    "../core/render/**/*.ts"
+    "../core/render/**/*.ts",
+    "../core/diff/**/*.ts",
+    "../core/architecture/**/*.ts"
   ]
 }

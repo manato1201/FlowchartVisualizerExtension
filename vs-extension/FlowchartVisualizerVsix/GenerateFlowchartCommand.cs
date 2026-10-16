@@ -88,9 +88,9 @@ internal sealed class GenerateFlowchartCommand
 
         var extractor = new FlowchartExtractor();
         var result = extractor.Extract(method, semanticModel, document.FilePath ?? document.Name);
-        var mermaidText = MermaidEmitter.Emit(result.Ir);
 
+        // IR をそのまま渡す(ビュー切替・差分・ジャンプは共有バンドルが行う)
         var window = await _package.ShowFlowchartToolWindowAsync();
-        await window.Control.RenderAsync(mermaidText);
+        await window.Control.RenderAsync(result.Ir, method.Identifier.Text + "()", document.FilePath);
     }
 }

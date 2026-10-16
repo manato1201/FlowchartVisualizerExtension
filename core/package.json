@@ -5,12 +5,16 @@
   "description": "FlowchartIR schema, Mermaid emitter, and shared offline webview bundle used by all host adapters (VSCode/Visual Studio/Rider).",
   "scripts": {
     "fetch-mermaid": "node scripts/fetch-mermaid.js",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node scripts/test-views.js && node scripts/test-diff.js && node scripts/test-architecture.js",
+    "test:webview": "tsc -p tsconfig.json && node scripts/test-webview.js",
+    "test:all": "npm test && node scripts/test-webview.js"
   },
   "dependencies": {
     "mermaid": "^10.9.1"
   },
   "devDependencies": {
+    "puppeteer-core": "^25.14.0",
     "typescript": "^5.4.5"
   }
 }

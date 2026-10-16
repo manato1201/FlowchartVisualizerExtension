@@ -89,7 +89,7 @@ function countNewlinesBefore(fullText: string, sub: string): number {
 }
 
 /** 文字列/コメントを考慮しつつ、openIdxにある"{"と対応する"}"のインデックスを返す。 */
-function findMatchingBrace(text: string, openIdx: number): number {
+export function findMatchingBrace(text: string, openIdx: number): number {
   let depth = 0;
   let inString: '"' | "'" | "`" | null = null;
   let inLineComment = false;

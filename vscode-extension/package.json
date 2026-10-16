@@ -17,7 +17,7 @@
     "commands": [
       {
         "command": "flowchart.generateFromFile",
-        "title": "Flowchart: ファイル全体からフローチャートを生成"
+        "title": "Flowchart: カーソル位置の関数からフローチャートを生成"
       },
       {
         "command": "flowchart.generateFromSelection",
@@ -38,6 +38,14 @@
       {
         "command": "flowchart.generateMagicCircle",
         "title": "Flowchart: 魔方陣として書き出し(エンタメ)"
+      },
+      {
+        "command": "flowchart.diffAgainstHead",
+        "title": "Flowchart: HEAD とのフロー差分を表示"
+      },
+      {
+        "command": "flowchart.loadArchitecture",
+        "title": "Flowchart: CodeBoarding の analysis.json を読み込む(全体)"
       }
     ],
     "menus": {
@@ -60,6 +68,13 @@
         },
         {
           "command": "flowchart.generateMagicCircle"
+        },
+        {
+          "command": "flowchart.diffAgainstHead",
+          "when": "editorLangId != ''"
+        },
+        {
+          "command": "flowchart.loadArchitecture"
         }
       ],
       "editor/context": [
@@ -75,6 +90,10 @@
         {
           "command": "flowchart.generateMagicCircle",
           "group": "flowchart@3"
+        },
+        {
+          "command": "flowchart.diffAgainstHead",
+          "group": "flowchart@4"
         }
       ]
     },
@@ -85,6 +104,11 @@
           "type": "boolean",
           "default": false,
           "description": "ファイル保存時に自動でフローチャートを再生成する"
+        },
+        "flowchart.followCursor": {
+          "type": "boolean",
+          "default": false,
+          "description": "カーソルのある関数が変わったら、図を自動で切り替える(図のパネルが開いているときだけ)"
         }
       }
     }
@@ -92,14 +116,17 @@
   "scripts": {
     "fetch-wasm": "node scripts/fetch-wasm.js",
     "copy-bundle": "node scripts/copy-bundle.js",
-    "compile": "tsc -p tsconfig.json",
+    "compile": "node scripts/copy-bundle.js && tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "postinstall": "node scripts/fetch-wasm.js",
-    "package": "npm run fetch-wasm && npm run copy-bundle && npm run compile"
+    "package": "npm run fetch-wasm && npm run compile",
+    "test": "npm run compile && node scripts/test-host-logic.js && node scripts/smoke-test-scanner.js",
+    "test:integration": "npm run compile && node test/runTest.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "typescript": "^5.4.5"
   },
   "dependencies": {

@@ -1,0 +1,7 @@
+# VSIX に入れないもの(開発・テスト用)
+test/**
+scripts/**
+src/**
+tsconfig.json
+**/*.map
+.vscode/**
