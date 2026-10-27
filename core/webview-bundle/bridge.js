@@ -437,9 +437,17 @@
 
   var renderQueue = Promise.resolve();
   function renderDiagram(opts) {
-    renderQueue = renderQueue.then(function () {
-      return doRender(opts || {});
-    });
+    // 1回の失敗(想定外の例外)が、以降の描画を巻き込んで止めないようにする
+    renderQueue = renderQueue
+      .then(function () {
+        return doRender(opts || {});
+      })
+      .catch(function (err) {
+        showBanner("図の描画に失敗しました: " + (err && err.message ? err.message : String(err)), {
+          retry: true,
+          mode: "render",
+        });
+      });
     return renderQueue;
   }
 

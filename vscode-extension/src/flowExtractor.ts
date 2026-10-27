@@ -186,7 +186,7 @@ async function buildIRFromTreeSitter(
 
   if (isLanguageSupportedByTreeSitter(doc.languageId)) {
     try {
-      return await extractWithTreeSitter(extensionUri, doc, range, label);
+      return await extractWithTreeSitter(extensionUri, doc, selection);
     } catch (err) {
       console.warn(
         "[flowchart] tree-sitter抽出に失敗、ヒューリスティックスキャナへフォールバックします",
