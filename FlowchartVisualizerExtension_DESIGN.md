@@ -353,3 +353,9 @@ vscode.workspace.onDidSaveTextDocument(async (doc) => {
 ## 優先度注記
 
 中〜大規模だが、各ホストが最も得意な形で構造抽出を担当させる設計により、車輪の再発明を避けている点で技術リスクは抑えられている。最大の不確実性はVisual Studioの`ControlFlowGraph` APIが実際にどこまで使えるか(正式サポートされているが利用例が少ない)という一点であり、Phase3の早い段階でこのAPIのスパイク検証を行うべきである。
+
+
+## 外部リソースの追補 第3弾の続き(2026-10-27)
+全体は [EXTERNAL_RESOURCES_2026-10-27.md](../EXTERNAL_RESOURCES_2026-10-27.md) §6。**提案(未実装)**。
+
+- Z16(oh-my-mermaid): 階層化した図(親の図から子の図へ開く)の見せ方の参考。Graphify(X3)と比べる。

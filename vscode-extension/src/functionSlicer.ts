@@ -1,66 +1,36 @@
-import { FlowchartIR } from "../../core/flowchart-ir/schema";
-import { findMatchingBrace, scanControlFlowHeuristic } from "./controlFlowScanner";
+import type { FlowchartIR } from "../../core/flowchart-ir/schema";
+import { maskCodeEx, matchBracket } from "./codeMask";
+import { scanControlFlowHeuristic } from "./controlFlowScanner";
 
 /**
  * `vscode` に依存しない、テキストだけを扱う関数群(Node 単体でテストできる)。
- *   - checkBraceBalance : 編集中の構文エラー(波括弧の対応不整合)を検出する
+ *   - checkBraceBalance  : 編集中の構文エラー(波括弧の対応不整合)を検出する
  *   - sliceFunctionByName: 変更前(HEAD)のファイル全文から、名前で関数を切り出す(X3 の差分用)
- *   - plainFunctionName : 「Update()」「Player.Update」などを素の関数名「Update」にする
+ *   - plainFunctionName  : 「Update()」「Player.Update」などを素の関数名「Update」にする
+ *   - irFromFunctionText : 関数宣言のテキストから FlowchartIR を作る
+ *
+ * 括弧の探索・文字列とコメントの読み飛ばしは codeMask.ts に一本化している。
  */
 
 /** 文字列・コメントを読み飛ばして波括弧の対応を調べる。 */
 export function checkBraceBalance(text: string): { ok: true } | { ok: false; reason: string } {
+  const { masked, unclosedBlockComment } = maskCodeEx(text);
+  if (unclosedBlockComment) return { ok: false, reason: "コメント /* が閉じられていません" };
   let depth = 0;
-  let inString: string | null = null;
-  let lineComment = false;
-  let blockComment = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    const n = text[i + 1];
-    if (lineComment) {
-      if (c === "\n") lineComment = false;
-      continue;
-    }
-    if (blockComment) {
-      if (c === "*" && n === "/") {
-        blockComment = false;
-        i++;
-      }
-      continue;
-    }
-    if (inString) {
-      if (c === "\\") i++;
-      else if (c === inString) inString = null;
-      else if (c === "\n" && inString !== "`") inString = null; // 閉じ忘れた文字列は行末で打ち切る
-      continue;
-    }
-    if (c === "/" && n === "/") {
-      lineComment = true;
-      i++;
-    } else if (c === "/" && n === "*") {
-      blockComment = true;
-      i++;
-    } else if (c === '"' || c === "'" || c === "`") {
-      inString = c;
-    } else if (c === "{") {
-      depth++;
-    } else if (c === "}") {
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i];
+    if (c === "{") depth++;
+    else if (c === "}") {
       depth--;
       if (depth < 0) return { ok: false, reason: "閉じ波括弧 } が余っています" };
     }
   }
-  if (blockComment) return { ok: false, reason: "コメント /* が閉じられていません" };
   if (depth > 0) return { ok: false, reason: "開き波括弧 { が閉じられていません" };
   return { ok: true };
 }
 
 /** 関数宣言のテキストから、制御フローのノード・エッジを組み立てる(vscode.* に依存しない)。 */
-export function irFromFunctionText(
-  text: string,
-  startLine: number,
-  label: string,
-  sourceFile: string,
-): FlowchartIR {
+export function irFromFunctionText(text: string, startLine: number, label: string, sourceFile: string): FlowchartIR {
   const { nodes, edges } = scanControlFlowHeuristic(text, startLine, label);
   return { nodes, edges, sourceFile, generatedAt: new Date().toISOString() };
 }
@@ -76,27 +46,6 @@ const NOT_A_DEFINITION_BEFORE = /(?:^|[^\w$])(?:return|new|else|case|throw|await
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** openIdx の "(" に対応する ")" の位置(文字列を読み飛ばす)。見つからなければ -1。 */
-function matchParen(text: string, openIdx: number): number {
-  let depth = 0;
-  let inString: string | null = null;
-  for (let i = openIdx; i < text.length; i++) {
-    const c = text[i];
-    if (inString) {
-      if (c === "\\") i++;
-      else if (c === inString) inString = null;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") inString = c;
-    else if (c === "(") depth++;
-    else if (c === ")") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
 }
 
 export interface SlicedFunction {
@@ -115,49 +64,53 @@ export interface SlicedFunction {
  *   - 引数の `)` の後ろが `;` なら定義ではない(宣言のみ・呼び出し)
  *   - 直前が return / new / else などの語なら定義ではない
  * 式形式のメンバー(`=> expr;`)は波括弧がなく、この拡張の対象外(切り出さない)。
+ *
+ * 探索はマスク(コメント・文字列を空白にしたテキスト)に対して行うので、
+ * 文字列やコメントの中の関数名・括弧には引っかからない。
  */
 export function sliceFunctionByName(text: string, name: string, nth = 0): SlicedFunction | null {
+  const { masked } = maskCodeEx(text);
   const re = new RegExp("(^|[^\\w$])" + escapeRegExp(name) + "\\s*(?:<[^<>(){};]*>)?\\s*\\(", "g");
   let seen = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
+  while ((m = re.exec(masked))) {
     const nameStart = m.index + m[1].length;
     const parenIdx = m.index + m[0].length - 1;
 
     // 直前(同じ行内)の文字で、定義か呼び出しかを判定する
-    const lineStart = text.lastIndexOf("\n", nameStart - 1) + 1;
-    const before = text.slice(lineStart, nameStart).trimEnd();
+    const lineStart = masked.lastIndexOf("\n", nameStart - 1) + 1;
+    const before = masked.slice(lineStart, nameStart).trimEnd();
     if (before.length > 0) {
       const last = before[before.length - 1];
       if (/[(=.,!?:+\-*/%<|&^[]/.test(last) && !/[>\]]$/.test(before)) continue;
       if (NOT_A_DEFINITION_BEFORE.test(before)) continue;
     }
 
-    const close = matchParen(text, parenIdx);
+    const close = matchBracket(masked, parenIdx, "(", ")");
     if (close < 0) continue;
 
     // 引数の後ろ: `{` までに `;` や `=>` が先に来たら定義ではない
     let i = close + 1;
     let found = -1;
     let angle = 0;
-    while (i < text.length) {
-      const c = text[i];
+    while (i < masked.length) {
+      const c = masked[i];
       if (c === "<") angle++;
-      else if (c === ">" && text[i - 1] !== "=" && angle > 0) angle--;
+      else if (c === ">" && masked[i - 1] !== "=" && angle > 0) angle--;
       else if (c === ";" && angle === 0) break;
-      else if (c === "=" && text[i + 1] === ">") break;
+      else if (c === "=" && masked[i + 1] === ">") break;
       else if (c === "{" && angle === 0) {
         found = i;
         break;
       } else if (c === "(") {
-        const e = matchParen(text, i);
+        const e = matchBracket(masked, i, "(", ")");
         if (e < 0) break;
         i = e;
       }
       i++;
     }
     if (found < 0) continue;
-    const end = findMatchingBrace(text, found);
+    const end = matchBracket(masked, found, "{", "}");
     if (end < 0) continue;
 
     if (seen++ < nth) {
