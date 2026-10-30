@@ -388,6 +388,71 @@ button {
   margin: 0;
   max-width: 44ch;
 }
+/* ASCII モチーフ(空状態だけ)。色は親の文字色のまま・選択もできない装飾 */
+#empty-motif {
+  margin: 0 0 8px;
+  font-family: var(--fv-mono);
+  font-size: 0.85em;
+  line-height: 1.15;
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ---- 再生中の番号つきの丸(X16)・光点(Y2)・凡例。種別は色でなく形で分ける ---- */
+#stage .fv-badge {
+  pointer-events: none;
+}
+#stage .fv-badge circle,
+#stage .fv-badge rect,
+#stage .fv-badge polygon {
+  fill: var(--fv-sel);
+  stroke: var(--fv-bg);
+  stroke-width: 2px;
+}
+#stage .fv-badge text {
+  fill: var(--fv-sel-fg);
+  font-family: var(--fv-font);
+  font-size: 11px;
+  font-weight: 600;
+}
+#stage .fv-dot {
+  fill: var(--fv-accent);
+  stroke: var(--fv-bg);
+  stroke-width: 1.5px;
+  pointer-events: none;
+}
+#legend {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
+  background: var(--fv-surface);
+  border: 1px solid var(--fv-border);
+  border-radius: 6px;
+  color: var(--fv-fg);
+  font-size: 0.9em;
+  z-index: 2;
+}
+#legend[hidden] {
+  display: none;
+}
+#legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#legend .lg-shape {
+  width: 14px;
+  height: 14px;
+  fill: var(--fv-sel);
+}
+#legend .lg-note {
+  color: var(--fv-muted-text);
+}
 
 /* ---- ミニマップ ---- */
 #minimap {

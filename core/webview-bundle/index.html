@@ -74,7 +74,14 @@
     <!-- 中央: 図(パン・ズーム) -->
     <main id="viewport" tabindex="0" aria-label="フローチャート" data-jump="false">
       <div id="stage"></div>
+      <div id="legend" aria-label="凡例" data-no-pan hidden>
+        <span class="lg"><svg class="lg-shape" viewBox="-12 -12 24 24" aria-hidden="true"><circle r="9" /></svg>true</span>
+        <span class="lg"><svg class="lg-shape" viewBox="-12 -12 24 24" aria-hidden="true"><rect x="-9" y="-9" width="18" height="18" rx="2" /></svg>false</span>
+        <span class="lg"><svg class="lg-shape" viewBox="-12 -12 24 24" aria-hidden="true"><polygon points="0,-11 11,0 0,11 -11,0" /></svg>通常</span>
+        <span class="lg-note">番号は通った順</span>
+      </div>
       <div id="empty" data-no-pan>
+        <pre id="empty-motif" aria-hidden="true"></pre>
         <p class="lead" id="empty-lead">関数にカーソルを置くと図が出ます</p>
         <p class="sub" id="empty-sub"></p>
         <button id="empty-generate" class="btn" type="button">このファイルから生成</button>
@@ -113,6 +120,7 @@
     <script src="./views.js"></script>
     <script src="./viewport.js"></script>
     <script src="./motion.js"></script>
+    <script src="./motif.js"></script>
     <script src="./bridge.js"></script>
   </body>
 </html>

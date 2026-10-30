@@ -120,7 +120,7 @@
     "watch": "tsc -p tsconfig.json --watch",
     "postinstall": "node scripts/fetch-wasm.js",
     "package": "npm run fetch-wasm && npm run compile",
-    "test": "npm run compile && node scripts/test-host-logic.js && node scripts/smoke-test-scanner.js",
+    "test": "npm run compile && node scripts/test-host-logic.js && node scripts/test-scanner.js && node scripts/smoke-test-scanner.js",
     "test:integration": "npm run compile && node test/runTest.js"
   },
   "devDependencies": {

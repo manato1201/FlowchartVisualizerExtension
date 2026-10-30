@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
   type ArchComponent,
   collectFilePaths,
+  isSafeRelativePath,
   markMissingFiles,
   parseCodeBoardingAnalysis,
 } from "../../core/architecture/codeboarding-adapter";
@@ -38,6 +39,8 @@ const FOLLOW_CURSOR_DEBOUNCE_MS = 400;
 let lastSource: { uri: vscode.Uri } | undefined;
 /** 同じ関数・同じ版のまま再描画しないための目印(カーソル追従用)。 */
 let lastKey = "";
+/** いま表示しているのが HEAD との差分か。差分を見ている間は、カーソル追従で図を上書きしない。 */
+let showingDiff = false;
 /** 「再試行」で同じ操作をもう一度行う(フロー生成・差分・analysis.json の読み込みのどれでも)。 */
 let lastRun: (() => Promise<void>) | undefined;
 /**
@@ -158,7 +161,7 @@ export function activate(context: vscode.ExtensionContext): FlowchartTestApi {
 
     // ---- カーソル追従(既定はオフ)。カーソルのある関数が変わったら図を差し替える ----
     vscode.window.onDidChangeTextEditorSelection((e) => {
-      if (!isFollowCursorEnabled() || !getCurrentPanel()) return;
+      if (!isFollowCursorEnabled() || !getCurrentPanel() || showingDiff) return;
       const doc = e.textEditor.document;
       if (!isFlowSupportedLanguage(doc.languageId) || (doc.uri.scheme !== "file" && doc.uri.scheme !== "untitled")) return;
       if (followTimer) clearTimeout(followTimer);
@@ -251,6 +254,7 @@ function publishIR(
   lastSource = { uri: doc.uri };
   lastMermaidText = emitMermaid(ir);
   lastKey = keyOf(ir, doc);
+  showingDiff = extra.mode === "diff";
   getOrCreateFlowchartPanel(context);
   const start = ir.nodes.find((n) => n.kind === "start");
   // ファイル全体を対象にした場合の開始ノードはファイル名なので、関数名としては出さない
@@ -507,6 +511,11 @@ async function loadArchitecture(context: vscode.ExtensionContext): Promise<void>
 
 async function openFunction(context: vscode.ExtensionContext, relPath: unknown, line: unknown): Promise<void> {
   if (typeof relPath !== "string" || typeof line !== "number" || !architectureRoot) return;
+  // Webview からのメッセージは信用しない: リポジトリの外を指すパスは開かない
+  if (!isSafeRelativePath(relPath)) {
+    reportError(context, new FlowchartUserError(`リポジトリの外を指すパスは開けません: ${relPath}`));
+    return;
+  }
   try {
     const uri = vscode.Uri.joinPath(architectureRoot, ...relPath.split("/"));
     const doc = await vscode.workspace.openTextDocument(uri);
