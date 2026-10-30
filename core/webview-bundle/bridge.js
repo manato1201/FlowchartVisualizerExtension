@@ -270,6 +270,9 @@
     $("overview").hidden = which !== "overview";
     stage.hidden = which !== "diagram";
     if (which !== "diagram") $("minimap").hidden = true;
+    // ASCII モチーフは空状態の間だけ(それ以外では止めて、タイマーも残さない)
+    if (which === "empty") window.FlowchartMotif.start($("empty-motif"));
+    else window.FlowchartMotif.stop();
     $("overview").setAttribute("data-no-pan", "");
     renderBreadcrumb();
     updateControls();
@@ -658,6 +661,7 @@
   function setPlayButton(playing) {
     $("btn-play").querySelector("use").setAttribute("href", playing ? "#i-stop" : "#i-play");
     $("btn-play-label").textContent = playing ? "停止" : "再生";
+    $("legend").hidden = !playing; // 番号つきの丸の凡例は再生中だけ
     $("btn-play").title = playing ? "再生を止める" : "実行順に再生";
   }
   $("btn-play").addEventListener("click", function () {
@@ -683,6 +687,7 @@
         edgeEl: paths[i] || null,
         edgeLabelEl: labels[i] || null,
         toEl: nodesById[e.to] || null,
+        kind: e.label === "true" || e.label === "false" ? e.label : "",
       };
     });
     var startNode = state.projected.nodes.filter(function (n) {
@@ -717,6 +722,9 @@
     // 動き・選択の一時状態は書き出さない
     clone.querySelectorAll(".selected,.lit").forEach(function (el) {
       el.classList.remove("selected", "lit");
+    });
+    clone.querySelectorAll(".fv-badge,.fv-dot").forEach(function (el) {
+      el.parentNode.removeChild(el);
     });
     return new XMLSerializer().serializeToString(clone);
   }

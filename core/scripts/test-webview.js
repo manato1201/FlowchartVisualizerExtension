@@ -447,6 +447,87 @@ async function shot(page, name) {
       await page.close();
     });
 
+    await test("X16/Y2: 再生中は番号つきの丸(1〜n)が通った順に付き、種別は形で分かれる。凡例は再生中だけ。光点が走り、終わると全部消える。書き出しには入らない", async () => {
+      const { page } = await H.openPage(browser, port);
+      let dots = 0;
+      await page.exposeFunction("__noteDot", () => dots++);
+      await renderIR(page, makeSampleIR());
+      await sleep(600);
+      assert.equal(await page.$eval("#legend", (e) => e.hidden), true, "再生前は凡例を出さない");
+      await page.evaluate(() => {
+        new MutationObserver((ms) =>
+          ms.forEach((m) =>
+            m.addedNodes.forEach((n) => n.classList && n.classList.contains("fv-dot") && window.__noteDot()),
+          ),
+        ).observe(document.querySelector("#stage"), { childList: true, subtree: true });
+      });
+      await page.click("#btn-play");
+      assert.equal(await page.$eval("#legend", (e) => e.hidden), false, "再生中は凡例が出る");
+      await sleep(1500);
+      const badges = await page.$$eval("#stage .fv-badge", (gs) =>
+        gs.map((g) => ({ n: g.textContent, kind: g.dataset.kind, shape: g.firstElementChild.tagName })),
+      );
+      assert.ok(badges.length >= 3, "番号が付いていく: " + badges.length);
+      badges.forEach((b, i) => assert.equal(b.n, String(i + 1), "1から連番"));
+      const want = { true: "circle", false: "rect", plain: "polygon" };
+      badges.forEach((b) => assert.equal(b.shape, want[b.kind], b.kind + " の形"));
+      assert.ok(new Set(badges.map((b) => b.kind)).size >= 2, "サンプルには分岐があり、形が2種類以上出る");
+      assert.ok(dots >= 1, "光点が線に沿って走る");
+      // 再生中でも書き出しに丸・光点は混ざらない
+      await page.click("#btn-save");
+      await page.click('#save-menu [data-save="svg"]');
+      const svgMsg = (await H.sent(page)).find((m) => m.type === "saveImage" && m.format === "svg");
+      assert.ok(!/fv-badge|fv-dot/.test(svgMsg.data));
+      await page.waitForFunction(() => !document.querySelector("#stage").classList.contains("playing"), { timeout: 15000 });
+      assert.equal(await page.$$eval("#stage .fv-badge, #stage .fv-dot", (e) => e.length), 0, "終了後は残らない");
+      assert.equal(await page.$eval("#legend", (e) => e.hidden), true, "終了後は凡例も消える");
+      await page.close();
+    });
+
+    await test("X16/Y2: 動きを減らす設定でも番号と形は出る(光点だけが出ない)", async () => {
+      const { page } = await H.openPage(browser, port, { reducedMotion: true });
+      let dots = 0;
+      await page.exposeFunction("__noteDot", () => dots++);
+      await renderIR(page, makeSampleIR());
+      await page.evaluate(() => {
+        new MutationObserver((ms) =>
+          ms.forEach((m) =>
+            m.addedNodes.forEach((n) => n.classList && n.classList.contains("fv-dot") && window.__noteDot()),
+          ),
+        ).observe(document.querySelector("#stage"), { childList: true, subtree: true });
+      });
+      await page.click("#btn-play");
+      await sleep(300);
+      const nums = await page.$$eval("#stage .fv-badge", (gs) => gs.map((g) => g.textContent));
+      assert.ok(nums.length >= 3 && nums[0] === "1" && nums[nums.length - 1] === String(nums.length));
+      assert.equal(dots, 0, "光点は動きなので出さない");
+      await page.close();
+    });
+
+    await test("ASCII モチーフ: 空状態だけに出る(装飾・読み上げ対象外)。ゆっくり動き、図を出すと止まる。動きを減らす設定では静止画", async () => {
+      const { page } = await H.openPage(browser, port);
+      const art = () => page.$eval("#empty-motif", (e) => e.textContent);
+      const first = await art();
+      assert.ok(first.includes("~") && first.split("\n").length >= 8, "絵が入っている");
+      assert.equal(await page.$eval("#empty-motif", (e) => e.getAttribute("aria-hidden")), "true");
+      assert.equal(await page.$eval("#empty-motif", (e) => getComputedStyle(e).userSelect), "none");
+      await sleep(1100);
+      assert.notEqual(await art(), first, "水面の文字が入れ替わる");
+      await renderIR(page, makeSampleIR());
+      assert.equal(await page.$eval("#empty", (e) => e.hidden), true, "図が出たら空状態ごと隠れる");
+      const frozen = await art();
+      await sleep(1100);
+      assert.equal(await art(), frozen, "空状態でなくなったら動きを止める");
+      await page.close();
+
+      const r = await H.openPage(browser, port, { reducedMotion: true });
+      const still = await r.page.$eval("#empty-motif", (e) => e.textContent);
+      assert.ok(still.includes("~"));
+      await sleep(1100);
+      assert.equal(await r.page.$eval("#empty-motif", (e) => e.textContent), still, "静止画のまま");
+      await r.page.close();
+    });
+
     await test("通常時は順次表示が走る(動き1)。大きな図(80ノード超)では付けない", async () => {
       const { page } = await H.openPage(browser, port);
       let seen = 0;

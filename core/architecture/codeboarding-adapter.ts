@@ -86,6 +86,17 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
+/**
+ * リポジトリルートの中を指す相対パスか。絶対パス・ドライブ指定・`..` を含むものは false。
+ * analysis.json は外部ツールの出力なので、ルートの外のファイルを開かせない(openFunction と存在確認の両方で使う)。
+ */
+export function isSafeRelativePath(p: string): boolean {
+  if (!p || p.includes("\0")) return false;
+  const n = normalizePath(p);
+  if (n.startsWith("/") || /^[A-Za-z]:/.test(n)) return false;
+  return !n.split("/").some((seg) => seg === "..");
+}
+
 function lastSegment(qualifiedName: string): string {
   const i = qualifiedName.lastIndexOf(".");
   return i >= 0 ? qualifiedName.slice(i + 1) : qualifiedName;
@@ -145,7 +156,12 @@ export function parseCodeBoardingAnalysis(input: unknown): ArchitectureModel {
 
     // ファイル -> 関数。file_methods を主とし、key_entities を補う
     const filesByPath = new Map<string, ArchFile>();
-    const fileOf = (p: string): ArchFile => {
+    const fileOf = (p: string): ArchFile | undefined => {
+      if (!isSafeRelativePath(p)) {
+        const msg = `リポジトリの外を指すパス「${p}」を読み飛ばしました`;
+        if (!warnings.includes(msg)) warnings.push(msg);
+        return undefined;
+      }
       const key = normalizePath(p);
       let f = filesByPath.get(key);
       if (!f) {
@@ -172,6 +188,7 @@ export function parseCodeBoardingAnalysis(input: unknown): ArchitectureModel {
         }
         const filePath = fm.file_path as string;
         const file = fileOf(filePath);
+        if (!file) continue;
         for (const qn of fm.methods) {
           if (typeof qn !== "string") continue;
           const entry = methodsIndex[`${filePath}|${qn}`];
@@ -196,6 +213,7 @@ export function parseCodeBoardingAnalysis(input: unknown): ArchitectureModel {
         if (!isObject(ke) || !str(ke.reference_file) || !str(ke.qualified_name))
           continue;
         const file = fileOf(ke.reference_file as string);
+        if (!file) continue;
         const start = num(ke.reference_start_line);
         const end = num(ke.reference_end_line);
         const entry =

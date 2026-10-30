@@ -123,4 +123,32 @@ test("Windows 区切りのパスを / に正規化する", () => {
   assert.equal(m.components[0].files[0].functions[0].kind, "method");
 });
 
+test("リポジトリの外を指すパス(絶対・ドライブ・..)は読み飛ばして警告する。内側の相対パスは通す", () => {
+  const { isSafeRelativePath } = require("../dist/architecture/codeboarding-adapter");
+  for (const bad of ["../x.cs", "a/../../x.cs", "/etc/passwd", "C:\\Windows\\a.cs", "C:/a.cs", "..\\a.cs", ""]) {
+    assert.equal(isSafeRelativePath(bad), false, bad);
+  }
+  for (const ok of ["src/a.cs", ".\\src\\a.cs", "a..b/c.cs", "src/..a/b.cs"]) {
+    assert.equal(isSafeRelativePath(ok), true, ok);
+  }
+  const m = parseCodeBoardingAnalysis({
+    components: [
+      {
+        name: "A",
+        file_methods: [
+          { file_path: "../secret.cs", methods: ["S.f"] },
+          { file_path: "src/ok.cs", methods: ["O.f"] },
+        ],
+        key_entities: [{ qualified_name: "E.g", reference_file: "/abs/e.cs", reference_start_line: 1, reference_end_line: 2 }],
+      },
+    ],
+    methods_index: {
+      "../secret.cs|S.f": { type: "METHOD", start_line: 1, end_line: 2 },
+      "src/ok.cs|O.f": { type: "METHOD", start_line: 1, end_line: 2 },
+    },
+  });
+  assert.deepEqual(m.components[0].files.map((f) => f.path), ["src/ok.cs"]);
+  assert.equal(m.warnings.filter((w) => /リポジトリの外/.test(w)).length, 2);
+});
+
 console.log(`architecture: ${passed} passed`);
