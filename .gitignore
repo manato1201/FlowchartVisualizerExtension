@@ -12,3 +12,9 @@ build/
 core/webview-bundle/mermaid.min.js
 vscode-extension/wasm/
 vscode-extension/webview-bundle/
+
+# Claude Code の承認済みコマンドには秘密情報が残ることがある(2026-11-09 追加)
+.claude/settings.local.json
+.env
+.env.*
+!.env.example
