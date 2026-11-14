@@ -80,7 +80,7 @@ def run_example(first_line: str, code: str, timeout: int = 300) -> "subprocess.C
     if first_line.strip() == RUN_MARK_JS:
         cfg = ROOT / "tools" / "docs_node_cwd.txt"
         cwd = ROOT / (cfg.read_text(encoding="utf-8").splitlines()[0].strip() if cfg.exists() else ".")
-        return subprocess.run(["node", "-e", code], capture_output=True, text=True, encoding="utf-8", cwd=cwd, timeout=timeout, check=False)
+        return subprocess.run(["node", "--experimental-strip-types", "--no-warnings", "-e", code], capture_output=True, text=True, encoding="utf-8", cwd=cwd, timeout=timeout, check=False)
     return subprocess.run(
         [sys.executable, "-X", "utf8", "-c", code], capture_output=True, text=True, encoding="utf-8", cwd=ROOT, timeout=timeout, check=False,
         env=example_env(),
