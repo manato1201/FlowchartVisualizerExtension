@@ -40,6 +40,10 @@
         "title": "Flowchart: 魔方陣として書き出し(エンタメ)"
       },
       {
+        "command": "flowchart.renderFromIrJson",
+        "title": "Flowchart: フローの JSON(IR)から図を描く"
+      },
+      {
         "command": "flowchart.diffAgainstHead",
         "title": "Flowchart: HEAD とのフロー差分を表示"
       },
@@ -68,6 +72,9 @@
         },
         {
           "command": "flowchart.generateMagicCircle"
+        },
+        {
+          "command": "flowchart.renderFromIrJson"
         },
         {
           "command": "flowchart.diffAgainstHead",

@@ -57,6 +57,49 @@
 
   var VIEW_ORDER = ["flow", "calls", "state"];
 
+  /**
+   * 描画のノード数ガード。Mermaid の描画時間はノード数の約 2 乗で増える
+   * (実測の目安: 282 ノードで約 1.0 秒、562 ノードで約 3.2 秒)。これを超えると、
+   * 既定では「状態」ビュー(分岐とループだけの要約。簡易表示)で描き、全体は利用者が選んだときだけ描く。
+   * しきい値はこの 1 か所だけ。IR は捨てない(全体はいつでも「フロー」で描ける)。
+   */
+  var RENDER_NODE_LIMIT = 300;
+
+  /** 描画にかかる秒数の目安(282 ノード=約1秒を基準に、ノード数の約1.7乗で増える近似。環境で変わる)。 */
+  function estimateRenderSeconds(nodeCount) {
+    return Math.pow(nodeCount / 282, 1.7);
+  }
+
+  /**
+   * どのビューで描くかを決める。
+   *   requestedView  利用者(またはホスト)が選んだビュー
+   *   opts.force     true なら、ノードが多くても要約しない(利用者が明示的に全体を求めた)
+   * 返り値:
+   *   view       実際に描くビュー
+   *   guarded    ガードで要約に切り替えたか
+   *   requestedCount  選ばれたビューのノード数 / shown  実際に描くノード数
+   *   heavy      描くノード数がまだ上限を超えているか(要約しても多い・または明示的に全体を求めた)
+   *   estimateSec / requestedEstimateSec  描画時間の目安(秒)
+   */
+  function planRender(ir, requestedView, opts) {
+    var req = VIEWS[requestedView] ? requestedView : "flow";
+    var force = !!(opts && opts.force);
+    var requestedCount = countVisible(ir, req);
+    var guarded = !force && req !== "state" && requestedCount > RENDER_NODE_LIMIT;
+    var view = guarded ? "state" : req;
+    var shown = guarded ? countVisible(ir, view) : requestedCount;
+    return {
+      view: view,
+      requested: req,
+      guarded: guarded,
+      requestedCount: requestedCount,
+      shown: shown,
+      heavy: shown > RENDER_NODE_LIMIT,
+      estimateSec: estimateRenderSeconds(shown),
+      requestedEstimateSec: estimateRenderSeconds(requestedCount),
+    };
+  }
+
   function isVisible(node, view) {
     if (view.kinds.indexOf(node.kind) < 0) return false;
     if (node.kind === "process" && view.processFilter) {
@@ -147,11 +190,65 @@
   /** Mermaid のエンティティ記法(core/render/mermaid-emitter.ts の escapeLabel と同一)。 */
   function escapeLabel(label) {
     return String(label)
+      .replace(/#(?=\w+;)/g, "#35;")
+      .replace(/%%/g, "#37;#37;")
+      .replace(/`/g, "#96;")
       .replace(/&/g, "#amp;")
       .replace(/"/g, "#quot;")
       .replace(/</g, "#lt;")
       .replace(/>/g, "#gt;")
       .replace(/\n/g, "<br/>");
+  }
+
+  /** 表示幅の目安(全角・かなは 2、それ以外は 1)。 */
+  function labelWidth(s) {
+    var w = 0;
+    for (var i = 0; i < s.length; i++) w += s.charCodeAt(i) > 0x2e7f ? 2 : 1;
+    return w;
+  }
+
+  /**
+   * 長いラベルを、幅 `width`(表示幅)ごとに折り返して行の配列にする。空白・カンマ・括弧・ドットの後ろで折り、
+   * それでも収まらない長い語は途中で分ける。改行を含むラベルは、その改行を保つ。
+   * 折り返しても文字は増減しない(全文はホバーのツールチップで見られる)。
+   */
+  function wrapLabel(text, width) {
+    var out = [];
+    String(text)
+      .split("\n")
+      .forEach(function (seg) {
+        var tokens = seg.match(/[^\s,(.]+[\s,(.]*|[\s,(.]+/g) || [seg];
+        var cur = "";
+        var curW = 0;
+        function flush() {
+          if (cur) out.push(cur);
+          cur = "";
+          curW = 0;
+        }
+        tokens.forEach(function (tok) {
+          var tw = labelWidth(tok);
+          if (curW + tw <= width) {
+            cur += tok;
+            curW += tw;
+            return;
+          }
+          flush();
+          // 1語が幅を超える: 幅ごとに分ける
+          while (labelWidth(tok) > width) {
+            var cut = 0;
+            var w = 0;
+            while (cut < tok.length && w + labelWidth(tok[cut]) <= width) w += labelWidth(tok[cut++]);
+            if (cut === 0) cut = 1;
+            out.push(tok.slice(0, cut));
+            tok = tok.slice(cut);
+          }
+          cur = tok;
+          curW = labelWidth(tok);
+        });
+        flush();
+        if (!tokens.length) out.push("");
+      });
+    return out.length ? out : [""];
   }
 
   function truncateLabel(label, max) {
@@ -174,6 +271,7 @@
    *   view        'flow' | 'calls' | 'state'(既定 flow)
    *   lineNumbers ノードに「L12」と行番号を併記する(Webview 表示用。コピー用の出力では false)
    *   maxLabel    ノード内の文字数上限(全文はホバーで見せる)。0 = 切らない
+   *   wrap        ノード内の1行の表示幅(これを超えたら折り返す)。0 または未指定 = 折り返さない
    *   diffColors  差分ノードの色 {added, removed, changed}
    * 差分(node.diff / edge.diff)がある場合のみ classDef / linkStyle を末尾に足す。
    */
@@ -187,7 +285,11 @@
       var n = p.nodes[i];
       var shape = SHAPES[n.kind] || SHAPES.process;
       var text = o.maxLabel ? truncateLabel(n.label, o.maxLabel) : n.label;
-      var label = escapeLabel(text);
+      var label = o.wrap
+        ? wrapLabel(text, o.wrap)
+            .map(escapeLabel)
+            .join("<br/>")
+        : escapeLabel(text);
       if (o.lineNumbers && n.sourceRange && n.sourceRange.startLine > 0) {
         label += "<br/>L" + n.sourceRange.startLine;
       }
@@ -261,6 +363,12 @@
     SHAPES: SHAPES,
     VIEWS: VIEWS,
     VIEW_ORDER: VIEW_ORDER,
+    RENDER_NODE_LIMIT: RENDER_NODE_LIMIT,
+    LABEL_MAX: 36, // ノード内に出す文字数の上限(超えた分は … にして、全文はツールチップ)
+    LABEL_WRAP: 20, // ノード内の1行の表示幅(超えたら折り返す)
+    estimateRenderSeconds: estimateRenderSeconds,
+    planRender: planRender,
+    wrapLabel: wrapLabel,
     isVisible: isVisible,
     countVisible: countVisible,
     projectView: projectView,

@@ -99,6 +99,20 @@ export class FlowBuilder {
     return { entryId: id, exits: [], terminals: [id] };
   }
 
+  /**
+   * break / continue: ここから先へは進まない(出口なし)が、関数の終わり(End)にも繋がない。
+   * 繋ぎ先(ループの出口・ループの条件)は、呼び出し側がループを完成させるときに決める。
+   */
+  jump(label: string, range: SourceRange): Flow {
+    const id = this.newNode("process", label, range);
+    return { entryId: id, exits: [], terminals: [] };
+  }
+
+  /** 登録済みのノードか(取り消し済みのノードを除くために使う)。 */
+  hasNode(id: string): boolean {
+    return this.nodes.some((n) => n.id === id);
+  }
+
   // ---- 分岐(if / else if / else)。ノードを先に作り(ID を出現順にするため)、本体を読んでから完成させる ----
 
   decision(label: string, range: SourceRange): string {

@@ -86,6 +86,7 @@ exports.run = async function run() {
       "flowchart.generateMagicCircle",
       "flowchart.diffAgainstHead",
       "flowchart.loadArchitecture",
+      "flowchart.renderFromIrJson",
     ]) {
       assert.ok(all.includes(c), c);
     }
@@ -133,14 +134,75 @@ exports.run = async function run() {
     assert.equal(await vscode.env.clipboard.readText(), 'flowchart TD\n  n1("x")');
   });
 
-  await test("未対応の言語(Python)は、図を作らずに帯でエラーを知らせる(中身のない図を出さない)", async () => {
+  await test("Python は tree-sitter で読んで図にする(開始・for・print・終了)。Python 拡張が無くても動く", async () => {
     const { editor } = await openFile("notes.py");
+    setCursor(editor, 1);
+    const rendered = waitFor(api.onRendered, (m) => m.mode === "flow" && /main/i.test(m.functionName ?? ""), 60000, "Python の描画完了");
+    await vscode.commands.executeCommand("flowchart.generateFromFile");
+    const m = await rendered;
+    assert.equal(m.nodeCount, 4, "開始 / for / print / 終了");
+  });
+
+  await test("Python の HEAD との差分は未対応と帯で知らせる(波括弧向けの切り出しで崩れた図を出さない)", async () => {
+    await openFile("notes.py");
+    await vscode.commands.executeCommand("flowchart.diffAgainstHead");
+    await sleep(500);
+    const last = api.getRecentPosted().filter((p) => p.type === "error").pop();
+    assert.ok(last, "error が送られる");
+    assert.match(last.message, /未対応/);
+  });
+
+  await test("フローの JSON(IR)を引数で渡すと、検証して図にする。ソースとは対応しないのでジャンプ不可", async () => {
+    const rendered = waitFor(api.onRendered, (m) => m.mode === "ir", 60000, "IR(JSON)の描画完了");
+    await vscode.commands.executeCommand("flowchart.renderFromIrJson", {
+      nodes: [
+        { id: "n1", kind: "start", label: "login()" },
+        { id: "n2", kind: "decision", label: "ok?" },
+        { id: "n3", kind: "end", label: "End" },
+      ],
+      edges: [
+        { from: "n1", to: "n2" },
+        { from: "n2", to: "n3", label: "true" },
+      ],
+    });
+    const m = await rendered;
+    assert.equal(m.nodeCount, 3);
+    const posted = api.getRecentPosted().filter((p) => p.type === "render").pop();
+    assert.equal(posted.meta.canJump, false);
+  });
+
+  await test("不正なフローの JSON(存在しない端の線・未知のキー)は、図を作らず理由を帯で知らせる。LLM の出力を信用しない", async () => {
+    await vscode.commands.executeCommand(
+      "flowchart.renderFromIrJson",
+      JSON.stringify({ nodes: [{ id: "n1", kind: "start", label: "a", color: "red" }], edges: [{ from: "n1", to: "zzz" }] }),
+    );
+    await sleep(500);
+    const last = api.getRecentPosted().filter((p) => p.type === "error").pop();
+    assert.ok(last, "error が送られる");
+    assert.match(last.message, /未知のキー "color"/);
+    assert.match(last.message, /"zzz" は nodes にありません/);
+  });
+
+  await test("未対応の言語(Ruby)は、図を作らずに帯でエラーを知らせる(中身のない図を出さない)", async () => {
+    const rb = await vscode.workspace.openTextDocument({ language: "ruby", content: "def main\n  3.times { |i| puts i }\nend\n" });
+    const editor = await vscode.window.showTextDocument(rb, { viewColumn: vscode.ViewColumn.One });
     setCursor(editor, 1);
     await vscode.commands.executeCommand("flowchart.generateFromFile");
     await sleep(500);
     const last = api.getRecentPosted().filter((p) => p.type === "error").pop();
     assert.ok(last, "error が送られる");
     assert.match(last.message, /未対応/);
+  });
+
+  await test("Python の構文エラーは、帯で理由を知らせる(崩れた図を出さない)", async () => {
+    const bad = await vscode.workspace.openTextDocument({ language: "python", content: "def broken():\n    if x\n        run(\n" });
+    const editor = await vscode.window.showTextDocument(bad, { viewColumn: vscode.ViewColumn.One });
+    setCursor(editor, 1);
+    await vscode.commands.executeCommand("flowchart.generateFromFile");
+    await sleep(800);
+    const last = api.getRecentPosted().filter((p) => p.type === "error").pop();
+    assert.ok(last, "error が送られる");
+    assert.match(last.message, /構文エラー/);
   });
 
   await test("構文エラーの可能性(波括弧の閉じ忘れ)は、帯で理由を知らせる", async () => {

@@ -2,7 +2,11 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { FlowchartIR } from "../../core/flowchart-ir/schema";
 import { checkBraceBalance, irFromFunctionText } from "./functionSlicer";
-import { extractWithTreeSitter, isLanguageSupportedByTreeSitter } from "./treeSitterExtractor";
+import {
+  extractWithTreeSitter,
+  isLanguageSupportedByTreeSitter,
+  TreeSitterSyntaxError,
+} from "./treeSitterExtractor";
 
 /**
  * 想定内の失敗(言語未対応・構文エラーの可能性など)。メッセージはそのまま利用者に見せてよい。
@@ -13,7 +17,8 @@ export class FlowchartUserError extends Error {}
 /**
  * 制御構文を波括弧で書く言語。ヒューリスティックスキャナ(波括弧と if/for/while/switch を読む)が
  * 前提とする構文。検証済みなのは C# のみで、それ以外は同じ構文規則に沿う範囲での対応。
- * Python・Ruby のようにインデントでブロックを表す言語は含めない(以前は黙って中身のない図を出していた)。
+ * Ruby のようにインデントでブロックを表す言語は含めない(以前は黙って中身のない図を出していた)。
+ * Python は波括弧のスキャナを通さず、tree-sitter だけで読む(下の TREE_SITTER_ONLY_LANGUAGE_IDS)。
  */
 const FLOW_LANGUAGE_IDS = new Set([
   "csharp",
@@ -34,6 +39,13 @@ const FLOW_LANGUAGE_IDS = new Set([
   "objective-c",
   "objective-cpp",
 ]);
+
+/**
+ * 構造を tree-sitter だけで読む言語(インデントでブロックを表す)。
+ * 言語サーバーのシンボルや波括弧のスキャナは使わない(Python のコードを波括弧で読むと、中身のない図になる)。
+ * 図の生成とカーソル追従は対応するが、HEAD との差分(関数ごとにテキストを切り出す仕組み)は未対応。
+ */
+const TREE_SITTER_ONLY_LANGUAGE_IDS = new Set(["python"]);
 
 const FLOW_FILE_EXTENSIONS = new Set([
   "cs",
@@ -60,9 +72,16 @@ const FLOW_FILE_EXTENSIONS = new Set([
   "scala",
   "m",
   "mm",
+  "py",
+  "pyi",
 ]);
 
 export function isFlowSupportedLanguage(languageId: string): boolean {
+  return FLOW_LANGUAGE_IDS.has(languageId) || TREE_SITTER_ONLY_LANGUAGE_IDS.has(languageId);
+}
+
+/** HEAD との差分に対応する言語(波括弧で関数を切り出せる言語)。 */
+export function isHeadDiffSupportedLanguage(languageId: string): boolean {
   return FLOW_LANGUAGE_IDS.has(languageId);
 }
 
@@ -117,8 +136,12 @@ export async function extractFlowchartIR(
 ): Promise<FlowchartIR> {
   if (!isFlowSupportedLanguage(doc.languageId)) {
     throw new FlowchartUserError(
-      `この言語(${doc.languageId})は未対応です。波括弧でブロックを書く言語(C#・TypeScript・JavaScript・Java・Kotlin・Go・Rust など)に対応しています。`
+      `この言語(${doc.languageId})は未対応です。波括弧でブロックを書く言語(C#・TypeScript・JavaScript・Java・Kotlin・Go・Rust など)と Python に対応しています。`
     );
+  }
+
+  if (TREE_SITTER_ONLY_LANGUAGE_IDS.has(doc.languageId)) {
+    return extractPythonLike(extensionUri, doc, selection);
   }
 
   const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
@@ -135,6 +158,26 @@ export async function extractFlowchartIR(
   }
 
   return buildIRFromTreeSitter(extensionUri, doc, selection);
+}
+
+async function extractPythonLike(
+  extensionUri: vscode.Uri,
+  doc: vscode.TextDocument,
+  selection?: vscode.Selection
+): Promise<FlowchartIR> {
+  try {
+    return await extractWithTreeSitter(extensionUri, doc, selection, { strict: true });
+  } catch (err) {
+    if (err instanceof TreeSitterSyntaxError) {
+      throw new FlowchartUserError(
+        `構文エラーの可能性があり、フローを作れません(${err.line} 行目付近)。入力中の場合は、書き終えてからもう一度お試しください。`
+      );
+    }
+    console.warn("[flowchart] tree-sitter抽出に失敗しました", err);
+    throw new FlowchartUserError(
+      `${doc.languageId} の構文解析に失敗しました(wasm/ の文法ファイルが無い可能性があります。\`npm run fetch-wasm\` を実行してください)。`
+    );
+  }
 }
 
 function findTargetSymbol(

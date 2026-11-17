@@ -6,7 +6,9 @@
 // その定義はホストアダプタが差し込む(host-shim.js)。ホスト → WebView は
 // window.postMessage 相当で次のメッセージを送る:
 //
-//   {type:"render", ir, meta, view?}      IR を描く(ビュー切替・差分・ジャンプが有効)
+//   {type:"render", ir, meta, view?}      IR を描く(ビュー切替・差分・ジャンプが有効)。
+//                                         ノードが Views.RENDER_NODE_LIMIT を超え、view も指定されていなければ、
+//                                         簡易表示(状態ビュー)で描き、帯で知らせる(「全体を描く」で全体)
 //   {type:"render", mermaidText, meta}    Mermaid テキストだけ描く(旧形式。フロービューのみ)
 //   {type:"error", message, retry?}       図の上に帯でエラーを出す(図は消さない)
 //   {type:"clearError"}
@@ -43,7 +45,10 @@
     ir: null, // FlowchartIR(差分付きの場合あり)
     rawText: null, // IR なしで Mermaid テキストだけ渡された場合
     meta: {},
-    view: "flow",
+    view: "flow", // 実際に描いているビュー(ノード数ガードで userView から切り替わることがある)
+    userView: "flow", // 利用者(またはホスト)が選んだビュー
+    forceSig: "", // この内容(ファイル|関数|モード)は、ノードが多くても要約せずに描く(利用者が全体を求めた)
+    guard: null, // 直近の描画計画(Views.planRender の結果)
     architecture: null,
     config: { followCursor: false },
     showing: "empty", // "empty" | "diagram" | "overview"
@@ -335,17 +340,23 @@
     });
   }
 
+  /** ファイル | 関数 | モード。同じ内容の再描画(保存・カーソル追従)では変わらない。 */
+  function contentKey() {
+    return [state.meta.file, state.meta.functionName, state.meta.mode].join("|");
+  }
+
   function setView(id) {
     if (!Views.VIEWS[id]) return;
+    state.userView = id;
+    // 要約(状態)以外を自分で選んだら、ノードが多くても要約せずに描く(選んだ内容を勝手に変えない)
+    if (id !== "state") state.forceSig = contentKey();
     if (state.showing === "overview") {
       if (!state.ir && !state.rawText) return;
-      state.view = id;
       showPane("diagram");
       renderDiagram({ fit: true, animate: true });
       return;
     }
-    if (id === state.view) return;
-    state.view = id;
+    if (state.ir && Views.planRender(state.ir, id, { force: state.forceSig === contentKey() }).view === state.view) return;
     stopPlayback();
     renderDiagram({ fit: true, animate: true });
   }
@@ -404,6 +415,8 @@
     $("banner").dataset.kind = o.kind || "error";
     $("banner-text").textContent = text;
     $("banner-retry").hidden = !o.retry;
+    $("banner-action").hidden = !o.action;
+    if (o.action) $("banner-action-label").textContent = o.action;
     state.bannerMode = o.mode || "host";
   }
   function hideBanner(mode) {
@@ -413,6 +426,13 @@
   }
   $("banner-close").addEventListener("click", function () {
     hideBanner();
+  });
+  // ノード数ガードの帯: 「全体を描く」で、要約をやめて選んだビューのまま描く
+  $("banner-action").addEventListener("click", function () {
+    if (state.bannerMode !== "guard") return;
+    state.forceSig = contentKey();
+    stopPlayback();
+    renderDiagram({ fit: true, animate: true });
   });
   $("banner-retry").addEventListener("click", function () {
     if (state.bannerMode === "render") renderDiagram({ fit: false, animate: false });
@@ -454,6 +474,31 @@
     return renderQueue;
   }
 
+  /** ノード数ガードの帯。要約に切り替えたとき・要約しても多いとき・全体を選んだとき。 */
+  function announceGuard(plan) {
+    var secs = function (n) {
+      return n < 1 ? "1 秒未満" : "約 " + Math.round(n) + " 秒";
+    };
+    var prefix = state.meta.banner ? state.meta.banner + " / " : "";
+    if (plan.guarded) {
+      showBanner(
+        prefix +
+          "ノードが " + plan.requestedCount + " 個あり、全体を描くと " + secs(plan.requestedEstimateSec) +
+          "かかる見込み(目安)です。先に簡易表示(分岐とループの要約・" + plan.shown + " ノード)で描いています。",
+        { kind: "info", mode: "guard", action: "全体を描く" },
+      );
+    } else if (plan.heavy) {
+      showBanner(
+        prefix +
+          "ノードが " + plan.shown + " 個と多いため、描画に " + secs(plan.estimateSec) +
+          "かかります(目安)。「状態」タブの簡易表示なら軽く描けます。",
+        { kind: "info", mode: "guard" },
+      );
+    } else {
+      hideBanner("guard");
+    }
+  }
+
   async function doRender(opts) {
     var seq = ++state.renderSeq;
     var p = readPalette();
@@ -462,15 +507,25 @@
     var clean;
     state.projected = null;
     if (state.ir) {
+      // ノード数ガード: 多すぎるときは、描く前に知らせて、既定では要約(状態ビュー)で描く
+      var plan = Views.planRender(state.ir, state.userView, { force: state.forceSig === contentKey() });
+      state.guard = plan;
+      state.view = plan.view;
+      announceGuard(plan);
+      if (plan.heavy) await new Promise(function (r) { setTimeout(r, 30); }); // 帯を先に描画させる(描画の間は画面が止まる)
+      if (seq !== state.renderSeq) return;
       state.projected = Views.projectView(state.ir, state.view);
       text = Views.emitMermaid(state.ir, {
         view: state.view,
         lineNumbers: true,
-        maxLabel: 34,
+        maxLabel: Views.LABEL_MAX,
+        wrap: Views.LABEL_WRAP,
         diffColors: diffColors(p),
       });
       clean = Views.emitMermaid(state.ir, { view: state.view, diffColors: diffColors(p) });
     } else if (state.rawText) {
+      state.guard = null;
+      hideBanner("guard");
       text = clean = state.rawText;
     } else {
       showPane("empty");
@@ -499,16 +554,16 @@
   /**
    * Mermaid は SVG テキストモード(htmlLabels:false)だと、`#lt;` のようなエンティティを
    * `&lt;` という文字列のまま <text> に入れてしまう(画面に「&lt;」と出る)。
-   * 描画後に、エミッターが付けた4種(& < > ")だけを元の文字へ戻す。1回の置換で行うため、
+   * 描画後に、エミッターが付けた7種(& < > " # % `)だけを元の文字へ戻す。1回の置換で行うため、
    * ソース中の `&lt;` という文字列そのもの(`#amp;lt;` で送っている)は壊れない。
    */
-  var ENTITY = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": '"' };
+  var ENTITY = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": '"', "&#35;": "#", "&#37;": "%", "&#96;": "`" };
   function decodeLabelEntities(svg) {
     var texts = svg.querySelectorAll("text, tspan");
     for (var i = 0; i < texts.length; i++) {
       var t = texts[i];
       if (t.children.length === 0 && t.textContent.indexOf("&") >= 0) {
-        t.textContent = t.textContent.replace(/&(lt|gt|amp|quot);/g, function (m) {
+        t.textContent = t.textContent.replace(/&(lt|gt|amp|quot|#35|#37|#96);/g, function (m) {
           return ENTITY[m];
         });
       }
@@ -564,6 +619,8 @@
       mode: state.meta.mode || "flow",
       functionName: state.meta.functionName || null,
       nodeCount: Object.keys(state.nodeInfo).length || stage.querySelectorAll("g.node").length,
+      guarded: !!(state.guard && state.guard.guarded), // ノード数ガードで要約に切り替えたか
+      totalNodes: state.ir ? state.ir.nodes.length : null,
     });
   }
 
@@ -950,8 +1007,14 @@
         state.ir = d.ir || null;
         state.rawText = d.ir ? null : d.mermaidText || null;
         state.meta = d.meta || {};
-        if (d.view && Views.VIEWS[d.view]) state.view = d.view;
-        if (!state.ir) state.view = "flow";
+        if (d.view && Views.VIEWS[d.view]) {
+          state.userView = d.view;
+          state.forceSig = contentKey(); // ビューを明示されたときは、ノード数ガードで書き換えない
+        }
+        if (!state.ir) {
+          state.userView = "flow";
+          state.view = "flow";
+        }
         hideBanner("host");
         if (state.meta.banner) showBanner(state.meta.banner, { kind: "info", mode: "host" });
         await renderDiagram({ fit: false, animate: true });
@@ -1015,6 +1078,8 @@
       nodeCount: Object.keys(state.nodeInfo).length,
       palette: readPalette(),
       bannerMode: state.bannerMode,
+      userView: state.userView,
+      guard: state.guard,
     };
   };
 

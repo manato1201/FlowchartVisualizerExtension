@@ -6,7 +6,7 @@
   "scripts": {
     "fetch-mermaid": "node scripts/fetch-mermaid.js",
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.json && node scripts/test-views.js && node scripts/test-diff.js && node scripts/test-architecture.js",
+    "test": "tsc -p tsconfig.json && node scripts/test-views.js && node scripts/test-diff.js && node scripts/test-architecture.js && node scripts/test-ir-input.js",
     "test:webview": "tsc -p tsconfig.json && node scripts/test-webview.js",
     "test:all": "npm test && node scripts/test-webview.js"
   },

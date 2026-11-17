@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/flowchart-visualizer/flowchart-ir.schema.json",
+  "title": "FlowchartIR 入力(LLM・外部ツールから渡す、フローの JSON)",
+  "description": "コードの代わりに、フロー(ノードと線)を JSON で渡して図を描くための入力。実装の検証は core/flowchart-ir/ir-input.ts(このスキーマより厳しい点: ノード ID の一意性・線の端がノードにあること・予約語の拒否は、スキーマでは表せないため実装側で行う)。入力は信用しない前提: 未知のキーは拒否、ラベルは 200 文字に切り詰め・制御文字を除去し、Mermaid の特殊文字はエスケープされる。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodes"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": { "$ref": "#/$defs/node" },
+      "description": "ノード。ID は一意。kind が start のノードを 1 個置く(無いと警告)。"
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 6000,
+      "default": [],
+      "items": { "$ref": "#/$defs/edge" },
+      "description": "線。from / to は nodes にある ID。"
+    },
+    "sourceFile": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "図の出どころの名前(表示用)。省略時は \"(IR)\"。"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601。省略時は受け取った時刻。"
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "maxLength": 40,
+          "description": "一意な ID。英字で始まる英数字と _ だけ(例: n1)。Mermaid の構文語(end・graph・style・class・click など)と、constructor・toString などの組み込み名は使えない。"
+        },
+        "kind": {
+          "enum": ["start", "end", "process", "decision", "loop", "ioOperation"],
+          "description": "形が決まる: start / end = 角丸、process = 長方形、decision = ひし形、loop = 六角形、ioOperation = 平行四辺形。"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "表示する文。200 文字を超える分は切り詰められる(警告)。改行・制御文字は空白になる。HTML としては解釈されない。"
+        },
+        "sourceRange": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startLine", "endLine"],
+          "properties": {
+            "startLine": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+            "endLine": { "type": "integer", "minimum": 0, "maximum": 10000000 }
+          },
+          "description": "元のコードの行(1 始まり。省略可・0 は「対応なし」)。IR の入力では、ノードからのジャンプはできない。"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string", "description": "nodes にある ID。" },
+        "to": { "type": "string", "description": "nodes にある ID。" },
+        "label": {
+          "enum": ["true", "false", ""],
+          "description": "分岐(decision)・繰り返し(loop)の出口にだけ付ける。省略可。"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "sourceFile": "login-flow",
+      "nodes": [
+        { "id": "n1", "kind": "start", "label": "login()" },
+        { "id": "n2", "kind": "decision", "label": "資格情報は正しい?" },
+        { "id": "n3", "kind": "process", "label": "セッションを作る" },
+        { "id": "n4", "kind": "process", "label": "エラーを返す" },
+        { "id": "n5", "kind": "end", "label": "End" }
+      ],
+      "edges": [
+        { "from": "n1", "to": "n2" },
+        { "from": "n2", "to": "n3", "label": "true" },
+        { "from": "n2", "to": "n4", "label": "false" },
+        { "from": "n3", "to": "n5" },
+        { "from": "n4", "to": "n5" }
+      ]
+    }
+  ]
+}

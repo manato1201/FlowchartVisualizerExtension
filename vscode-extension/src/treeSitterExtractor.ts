@@ -15,6 +15,13 @@ import { buildFlowFromTree } from "./treeSitterWalker";
  * スキャナへさらにフォールバックする(例外を投げて処理を止めない)。
  */
 
+/** 厳密モードで、対象の関数に構文エラーがあったとき。`line` は 1 始まり。 */
+export class TreeSitterSyntaxError extends Error {
+  constructor(readonly line: number) {
+    super(`構文エラー(${line} 行目付近)`);
+  }
+}
+
 let initPromise: Promise<void> | undefined;
 const languageCache = new Map<string, Parser.Language>();
 
@@ -24,6 +31,7 @@ const LANGUAGE_ID_TO_GRAMMAR: Record<string, string> = {
   typescriptreact: "tree-sitter-tsx.wasm",
   javascript: "tree-sitter-javascript.wasm",
   javascriptreact: "tree-sitter-javascript.wasm",
+  python: "tree-sitter-python.wasm",
 };
 
 export function isLanguageSupportedByTreeSitter(languageId: string): boolean {
@@ -62,6 +70,7 @@ export async function extractWithTreeSitter(
   extensionUri: vscode.Uri,
   doc: vscode.TextDocument,
   selection?: vscode.Selection,
+  opts: { strict?: boolean } = {},
 ): Promise<FlowchartIR> {
   const language = await getLanguage(extensionUri, doc.languageId);
 
@@ -72,8 +81,10 @@ export async function extractWithTreeSitter(
     if (!tree) throw new Error("tree-sitterの構文解析に失敗しました");
 
     const at = selection ? { row: selection.start.line, column: selection.start.character } : undefined;
-    const { nodes, edges } = buildFlowFromTree(tree.rootNode, at, path.basename(doc.fileName));
+    const { nodes, edges, syntaxErrorRow } = buildFlowFromTree(tree.rootNode, at, path.basename(doc.fileName));
     tree.delete();
+    // 厳密モード(Python): 対象の関数に構文エラーがあれば、崩れた図を出さずに知らせる
+    if (opts.strict && syntaxErrorRow !== undefined) throw new TreeSitterSyntaxError(syntaxErrorRow + 1);
 
     return {
       nodes,

@@ -415,6 +415,9 @@ function assertWellFormed(ir, ctx = "") {
     const langs = {
       ts: await Parser.Language.load(path.join(wasmDir, "tree-sitter-typescript.wasm")),
       cs: await Parser.Language.load(path.join(wasmDir, "tree-sitter-c_sharp.wasm")),
+      py: fs.existsSync(path.join(wasmDir, "tree-sitter-python.wasm"))
+        ? await Parser.Language.load(path.join(wasmDir, "tree-sitter-python.wasm"))
+        : null,
     };
     const flow = (lang, code, at) => {
       const p = new Parser();
@@ -524,6 +527,206 @@ function assertWellFormed(ir, ctx = "") {
       const norm = (ir) => [...edgeSet(ir)].sort();
       assert.deepEqual(norm(text), norm(tree), "辺の集合(ID・ラベルまで)");
     });
+
+    // ------------------------------------------------------------ Python(インデントでブロックを表す言語)
+    if (!langs.py) {
+      console.log("  skip Python(wasm/tree-sitter-python.wasm が無い。`npm run fetch-wasm` を実行してください)");
+    } else {
+      const PY = `import os
+
+@decorator
+async def handler(items, flag):
+    """処理の説明(図には出さない)"""
+    if flag > 0:
+        first()
+    elif flag < 0:
+        second()
+    else:
+        third()
+    for item in items:
+        if item.skip:
+            continue
+        if item.stop:
+            break
+        use(item)
+    else:
+        finished()
+    while running:
+        tick()
+    try:
+        risky()
+    except ValueError as e:
+        log(e)
+    else:
+        ok()
+    finally:
+        cleanup()
+    with open(path) as fh:
+        fh.read()
+    match command:
+        case "go":
+            go()
+        case [x, y] if x > 0:
+            two()
+        case _:
+            other()
+    raise RuntimeError("boom")
+    unreachable()
+
+def other_function():
+    return 1
+`;
+      const pyFlow = (code, at) => flow("py", code, at);
+      const edgeTo = (ir, from, to, label) => hasEdge(ir, from, to, label);
+
+      await test("tree-sitter(Python): def・if/elif/else・for・while・try・with・match・raise を、同じ規則(true/false・End への接続)で読む", () => {
+        const ir = pyFlow(PY, { row: 10, column: 4 });
+        assertWellFormed(ir, "python");
+        assert.equal(ir.nodes[0].label, "handler()", "デコレータ・async の付いた関数名");
+        // if / elif / else
+        const iff = byLabel(ir, "if flag > 0");
+        const elif = byLabel(ir, "elif flag < 0");
+        assert.equal(iff.kind, "decision");
+        assert.ok(edgeTo(ir, iff, byLabel(ir, "first()"), "true"));
+        assert.ok(edgeTo(ir, iff, elif, "false"), "elif は false 側に続く");
+        assert.ok(edgeTo(ir, elif, byLabel(ir, "second()"), "true"));
+        assert.ok(edgeTo(ir, elif, byLabel(ir, "third()"), "false"));
+        // for: 本体は true、終わりは false。else は break しなかったときだけ
+        const loop = byLabel(ir, "for item in items");
+        assert.equal(loop.kind, "loop");
+        assert.ok(edgeTo(ir, loop, byLabel(ir, "if item.skip"), "true"));
+        assert.ok(edgeTo(ir, byLabel(ir, "use(item)"), loop), "本体の終わりから条件へ戻る");
+        assert.ok(edgeTo(ir, loop, byLabel(ir, "finished()"), "false"), "for-else: 正常に終わったときだけ else");
+        // while
+        assert.equal(byLabel(ir, "while running").kind, "loop");
+        assert.ok(edgeTo(ir, byLabel(ir, "tick()"), byLabel(ir, "while running")));
+        // with: 見出しのあとに本体
+        assert.ok(edgeTo(ir, byLabel(ir, "with open(path) as fh"), byLabel(ir, "fh.read()")));
+        // try/except/else/finally
+        const risky = byLabel(ir, "risky()");
+        const exc = byLabel(ir, "except ValueError as e");
+        assert.ok(edgeTo(ir, risky, exc), "例外が起きうる経路");
+        assert.ok(edgeTo(ir, risky, byLabel(ir, "ok()")), "try の本体のあとに else");
+        assert.ok(edgeTo(ir, byLabel(ir, "ok()"), byLabel(ir, "cleanup()")), "else → finally");
+        assert.ok(edgeTo(ir, byLabel(ir, "log(e)"), byLabel(ir, "cleanup()")), "except → finally");
+        // match: 見出し + case ごと。`case _` があるので、match から直接は抜けない
+        const m = byLabel(ir, "match command");
+        assert.equal(m.kind, "decision");
+        const fromMatch = ir.edges.filter((e) => e.from === m.id);
+        assert.equal(fromMatch.length, 3, "case の数だけ");
+        assert.ok(byLabel(ir, "case _") && byLabel(ir, "case [x, y] if x > 0"));
+        // raise は End へ。後ろの文は到達不能なので出さない
+        const raise = byLabel(ir, "raise RuntimeError");
+        assert.deepEqual(
+          ir.edges.filter((e) => e.from === raise.id).map((e) => e.to),
+          [ir.nodes[ir.nodes.length - 1].id],
+        );
+        assert.ok(!byLabel(ir, "unreachable()"));
+        assert.ok(!ir.nodes.some((n) => n.label.includes("説明")), "docstring は出さない");
+      });
+
+      await test("tree-sitter(Python): continue はループの条件へ戻り、break はループの次へ出る(else は飛ばす)", () => {
+        const ir = pyFlow(PY, { row: 10, column: 4 });
+        const loop = byLabel(ir, "for item in items");
+        const cont = byLabel(ir, "continue");
+        const brk = byLabel(ir, "break");
+        assert.deepEqual(ir.edges.filter((e) => e.from === cont.id).map((e) => e.to), [loop.id], "continue → ループ");
+        const afterLoop = byLabel(ir, "while running");
+        assert.deepEqual(ir.edges.filter((e) => e.from === brk.id).map((e) => e.to), [afterLoop.id], "break → ループの次(else を通らない)");
+        assert.ok(edgeTo(ir, byLabel(ir, "finished()"), afterLoop), "else の後もループの次へ");
+      });
+
+      await test("tree-sitter(Python): 関数の選択(カーソル位置・デコレータの行・最初の関数)と、クラスのメソッド", () => {
+        const other = pyFlow(PY, { row: PY.split("\n").findIndex((l) => l.includes("return 1")), column: 4 });
+        assert.equal(other.nodes[0].label, "other_function()");
+        assertWellFormed(other, "other");
+        const onDecorator = pyFlow(PY, { row: 2, column: 2 });
+        assert.equal(onDecorator.nodes[0].label, "handler()");
+        assert.equal(pyFlow(PY, undefined).nodes[0].label, "handler()");
+        const CLS = `class A:
+    def update(self):
+        if self.x:
+            self.go()
+        return 1
+
+    def other(self):
+        pass
+`;
+        const u = pyFlow(CLS, { row: 3, column: 8 });
+        assert.equal(u.nodes[0].label, "update()");
+        assertWellFormed(u, "method");
+        const o = pyFlow(CLS, { row: 7, column: 8 });
+        assert.equal(o.nodes[0].label, "other()");
+        assert.deepEqual(kinds(o), ["start", "end"], "pass だけの関数は 開始→終了");
+      });
+
+      await test("tree-sitter(Python): 関数のないスクリプトは、トップレベルの文を図にする", () => {
+        const ir = pyFlow(`x = load()\nif x:\n    run(x)\nprint("done")\n`, undefined);
+        assertWellFormed(ir, "script");
+        assert.ok(byLabel(ir, "if x") && byLabel(ir, "run(x)"));
+        assert.match(ir.nodes[0].label, /file/);
+      });
+
+      await test("tree-sitter(Python): while-else・ネストしたループの break/continue が、内側のループにだけ効く", () => {
+        const ir = pyFlow(`def f(rows):
+    while a:
+        for r in rows:
+            if r:
+                break
+            work(r)
+        if done:
+            continue
+    else:
+        never_broke()
+    after()
+`, undefined);
+        assertWellFormed(ir, "nested");
+        const outer = byLabel(ir, "while a");
+        const inner = byLabel(ir, "for r in rows");
+        const brk = byLabel(ir, "break");
+        // break は内側の for の次(if done)へ。外側の while へは出ない
+        assert.deepEqual(ir.edges.filter((e) => e.from === brk.id).map((e) => e.to), [byLabel(ir, "if done").id]);
+        assert.ok(edgeTo(ir, byLabel(ir, "continue"), outer), "continue は外側の while の条件へ");
+        assert.ok(edgeTo(ir, outer, byLabel(ir, "never_broke()"), "false"), "while-else");
+        assert.ok(edgeTo(ir, inner, byLabel(ir, "if done"), "false"));
+      });
+
+      await test("tree-sitter(Python): すべての経路が return で終わる try でも、finally の孤立ノードを作らない", () => {
+        const ir = pyFlow(`def f():
+    try:
+        return a()
+    except Exception:
+        return b()
+    finally:
+        cleanup()
+`, undefined);
+        assertWellFormed(ir, "try-return");
+        assert.ok(!byLabel(ir, "cleanup()"));
+      });
+
+      await test("tree-sitter(Python): 構文エラーは syntaxErrorRow で分かる(正しいコードでは undefined)。他の関数のエラーは巻き込まない", () => {
+        const good = pyFlow(PY, undefined);
+        assert.equal(good.syntaxErrorRow, undefined);
+        const BAD = `def fine():
+    return 1
+
+def broken():
+    if x
+        run(
+`;
+        const bad = pyFlow(BAD, { row: 4, column: 4 });
+        assert.equal(bad.nodes[0].label, "broken()");
+        assert.equal(typeof bad.syntaxErrorRow, "number");
+        const fine = pyFlow(BAD, { row: 1, column: 4 });
+        assert.equal(fine.nodes[0].label, "fine()");
+        assert.equal(fine.syntaxErrorRow, undefined, "壊れていない関数は対象外のエラーを引き受けない");
+      });
+
+      await test("tree-sitter(Python): ループの外の break / continue は普通の文として扱う(落ちない)", () => {
+        const ir = pyFlow(`def f():\n    break\n    done()\n`, undefined);
+        assertWellFormed(ir, "stray-break");
+      });
+    }
   }
 
   console.log(`scanner: ${passed} passed`);

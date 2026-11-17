@@ -26,6 +26,10 @@ const SHAPE: Record<NodeKind, [string, string]> = {
  */
 function escapeLabel(label: string): string {
   return label
+    // Mermaid が先に解釈してしまうもの(順序に注意: 次の置換が作る `#...;` を、ここで巻き込まない)
+    .replace(/#(?=\w+;)/g, "#35;") // ラベル中の `#lt;` のような文字列を、エンティティと取り違えない
+    .replace(/%%/g, "#37;#37;") // `%%` は Mermaid のコメント・ディレクティブの開始(図全体が壊れる)
+    .replace(/`/g, "#96;") // 先頭の ` は Markdown 文字列の開始(描画に失敗する)
     .replace(/&/g, "#amp;")
     .replace(/"/g, "#quot;")
     .replace(/</g, "#lt;")

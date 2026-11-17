@@ -11,7 +11,7 @@ import type {
 } from "../../core/flowchart-ir/schema";
 
 /**
- * tree-sitter の構文木(C# / TypeScript / TSX / JavaScript)から FlowchartIR を組み立てる。
+ * tree-sitter の構文木(C# / TypeScript / TSX / JavaScript / Python)から FlowchartIR を組み立てる。
  * `vscode` に依存しない純粋なウォーカー(Node 単体でテストできる)。ファイルの読み込みと
  * WASM の初期化は treeSitterExtractor.ts が担う。
  *
@@ -35,6 +35,7 @@ const FUNCTION_TYPES = new Set([
   "function",
   "arrow_function",
   "method_definition",
+  "function_definition", // Python
 ]);
 
 const BLOCK_TYPES = new Set(["block", "statement_block"]);
@@ -49,7 +50,7 @@ const WHILE_TYPES = new Set(["while_statement"]);
 const DO_TYPES = new Set(["do_statement"]);
 const SWITCH_TYPES = new Set(["switch_statement"]);
 const TRY_TYPES = new Set(["try_statement"]);
-const TERMINAL_TYPES = new Set(["return_statement", "throw_statement"]);
+const TERMINAL_TYPES = new Set(["return_statement", "throw_statement", "raise_statement"]);
 const WRAPPER_TYPES = new Set([
   "using_statement",
   "lock_statement",
@@ -57,7 +58,19 @@ const WRAPPER_TYPES = new Set([
   "checked_statement",
   "unsafe_statement",
 ]);
-const SKIPPED_TYPES = new Set(["comment", "empty_statement"]);
+const SKIPPED_TYPES = new Set(["comment", "empty_statement", "pass_statement"]);
+
+// ---- Python(インデントでブロックを表す言語)。`root.type === "module"` のときだけ使う ----
+const PY_WITH_TYPES = new Set(["with_statement"]);
+const PY_MATCH_TYPES = new Set(["match_statement"]);
+const PY_JUMP_TYPES = new Set(["break_statement", "continue_statement"]);
+const PY_EXCEPT_TYPES = new Set(["except_clause", "except_group_clause"]);
+
+/** ループの中で出会った break / continue。ループを完成させるときに、繋ぎ先を決める。 */
+interface LoopContext {
+  breaks: string[];
+  continues: string[];
+}
 
 function collapse(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -73,7 +86,7 @@ function stripOuterParens(s: string): string {
   return t.startsWith("(") && t.endsWith(")") ? t.slice(1, -1) : t;
 }
 
-type Kind = "simple" | "terminal" | "control";
+type Kind = "simple" | "terminal" | "control" | "jump";
 
 /**
  * ループ本体。TypeScript の文法は `body` フィールドを持つが、C# の while / foreach などは持たないため、
@@ -98,8 +111,12 @@ function conditionOf(n: SyntaxNode): SyntaxNode | null {
 
 class TreeWalker {
   readonly b = new FlowBuilder();
+  private readonly loops: LoopContext[] = [];
 
-  constructor(private readonly baseLine: number) {}
+  constructor(
+    private readonly baseLine: number,
+    private readonly py = false,
+  ) {}
 
   private range(first: SyntaxNode, last: SyntaxNode = first): SourceRange {
     return {
@@ -110,6 +127,11 @@ class TreeWalker {
 
   private classify(n: SyntaxNode): Kind {
     if (TERMINAL_TYPES.has(n.type)) return "terminal";
+    if (this.py) {
+      // break / continue はループの中でだけ意味を持つ(外にあれば普通の文として扱う)
+      if (PY_JUMP_TYPES.has(n.type)) return this.loops.length > 0 ? "jump" : "simple";
+      if (PY_WITH_TYPES.has(n.type) || PY_MATCH_TYPES.has(n.type)) return "control";
+    }
     if (
       BLOCK_TYPES.has(n.type) ||
       IF_TYPES.has(n.type) ||
@@ -136,7 +158,7 @@ class TreeWalker {
       if (!group) return;
       seq.add(
         this.b.process(
-          truncate(group.parts.join(" ")),
+          truncate(group.parts.join(this.py ? "; " : " ")),
           this.range(group.first, group.last),
         ),
       );
@@ -160,7 +182,9 @@ class TreeWalker {
       const flow =
         kind === "terminal"
           ? this.b.terminal(truncate(s.text), this.range(s))
-          : this.walkControl(s);
+          : kind === "jump"
+            ? this.walkJump(s)
+            : this.walkControl(s);
       if (seq.dead) this.b.rollback(mark);
       else seq.add(flow);
     }
@@ -177,6 +201,7 @@ class TreeWalker {
 
   private walkControl(n: SyntaxNode): Flow {
     if (BLOCK_TYPES.has(n.type)) return this.walkSequence(n.namedChildren);
+    if (this.py) return this.walkPyControl(n);
     if (IF_TYPES.has(n.type)) return this.walkIf(n, "if");
     if (FOR_TYPES.has(n.type)) return this.walkLoop(n, "for");
     if (FOREACH_TYPES.has(n.type)) return this.walkLoop(n, "foreach");
@@ -319,25 +344,191 @@ class TreeWalker {
       }
     }
 
-    let flow = this.b.tryCatch(body, handlers);
-    if (finallyNode) {
-      const mark = this.b.mark();
-      const fin = this.walkBody(
-        finallyNode.childForFieldName("body") ??
+    const flow = this.b.tryCatch(body, handlers);
+    return this.withFinally(
+      flow,
+      finallyNode &&
+        (finallyNode.childForFieldName("body") ??
           finallyNode.namedChildren.find((x) => BLOCK_TYPES.has(x.type)) ??
-          null,
-      );
-      if (fin.entryId && flow.exits.length === 0) {
-        this.b.rollback(mark); // すべての経路が return/throw で終わるなら、finally へ繋ぐ先がない
-      } else if (fin.entryId) {
-        const seq = this.b.sequence();
-        seq.add(flow);
-        seq.add(fin);
-        flow = seq.done();
-      }
+          null),
+    );
+  }
+
+  /** try / catch の流れの後ろへ finally を並べる。すべての経路が return/throw で終わるなら、繋ぐ先がないので作らない。 */
+  private withFinally(flow: Flow, finallyBody: SyntaxNode | null): Flow {
+    if (!finallyBody) return flow;
+    const mark = this.b.mark();
+    const fin = this.walkBody(finallyBody);
+    if (fin.entryId && flow.exits.length === 0) {
+      this.b.rollback(mark);
+    } else if (fin.entryId) {
+      const seq = this.b.sequence();
+      seq.add(flow);
+      seq.add(fin);
+      return seq.done();
     }
     return flow;
   }
+
+  // ---------------------------------------------------------------- Python
+
+  private walkPyControl(n: SyntaxNode): Flow {
+    if (IF_TYPES.has(n.type)) return this.walkPyIf(n);
+    if (FOR_TYPES.has(n.type) || WHILE_TYPES.has(n.type)) return this.walkPyLoop(n);
+    if (TRY_TYPES.has(n.type)) return this.walkPyTry(n);
+    if (PY_WITH_TYPES.has(n.type)) return this.walkPyWith(n);
+    if (PY_MATCH_TYPES.has(n.type)) return this.walkPyMatch(n);
+    return this.walkSequence([]);
+  }
+
+  /** 本体(`block`)の手前までの見出し。末尾の `:` を除く。例: `for i in range(3)` */
+  private pyHead(n: SyntaxNode, body: SyntaxNode | null, max = MAX_LABEL): string {
+    const head = body ? n.text.slice(0, body.startIndex - n.startIndex) : n.text;
+    return truncate(collapse(head).replace(/\s*:$/, ""), max);
+  }
+
+  private walkPyIf(n: SyntaxNode): Flow {
+    const cond = n.childForFieldName("condition");
+    const id = this.b.decision(
+      `if ${truncate(cond?.text ?? "", MAX_CONDITION)}`,
+      this.range(n.firstChild ?? n, cond ?? n),
+    );
+    const thenFlow = this.walkBody(n.childForFieldName("consequence"));
+    const alts = n.namedChildren.filter((c) => c.type === "elif_clause" || c.type === "else_clause");
+    return this.b.completeBranch(id, thenFlow, this.walkPyAlternatives(alts));
+  }
+
+  /** elif の連鎖。`elif` は「else の中の if」と同じ形(false 側に次の分岐が続く)にする。 */
+  private walkPyAlternatives(alts: SyntaxNode[]): Flow | undefined {
+    const [first, ...rest] = alts;
+    if (!first) return undefined;
+    if (first.type === "else_clause") return this.walkBody(first.childForFieldName("body"));
+    const cond = first.childForFieldName("condition");
+    const id = this.b.decision(
+      `elif ${truncate(cond?.text ?? "", MAX_CONDITION)}`,
+      this.range(first.firstChild ?? first, cond ?? first),
+    );
+    const thenFlow = this.walkBody(first.childForFieldName("consequence"));
+    return this.b.completeBranch(id, thenFlow, this.walkPyAlternatives(rest));
+  }
+
+  private walkJump(n: SyntaxNode): Flow {
+    const flow = this.b.jump(truncate(n.text), this.range(n));
+    const ctx = this.loops[this.loops.length - 1];
+    if (ctx && flow.entryId) (n.type === "break_statement" ? ctx.breaks : ctx.continues).push(flow.entryId);
+    return flow;
+  }
+
+  /** for / while。continue は条件へ戻り、break と(あれば else の後の)正常終了がループの出口になる。 */
+  private walkPyLoop(n: SyntaxNode): Flow {
+    const body = n.childForFieldName("body");
+    const id = this.b.loopNode(this.pyHead(n, body), this.range(n.firstChild ?? n));
+    const ctx: LoopContext = { breaks: [], continues: [] };
+    this.loops.push(ctx);
+    const bodyFlow = this.walkBody(body);
+    this.loops.pop();
+
+    const base = this.b.completeLoop(id, bodyFlow);
+    for (const c of ctx.continues) if (this.b.hasNode(c)) this.b.link({ id: c }, id);
+
+    const exits: Flow["exits"] = [];
+    const terminals = [...base.terminals];
+    const alt = n.childForFieldName("alternative"); // for/while の else: break せずに終わったときだけ通る
+    const elseFlow = alt ? this.walkBody(alt.childForFieldName("body")) : EMPTY_FLOW;
+    if (elseFlow.entryId) {
+      this.b.link({ id, label: "false" }, elseFlow.entryId);
+      exits.push(...elseFlow.exits);
+      terminals.push(...elseFlow.terminals);
+    } else {
+      exits.push({ id, label: "false" });
+    }
+    for (const b of ctx.breaks) if (this.b.hasNode(b)) exits.push({ id: b });
+    return { entryId: id, exits, terminals };
+  }
+
+  /** with: 見出し(`with open(p) as f`)を1つのノードにして、本体を続ける。 */
+  private walkPyWith(n: SyntaxNode): Flow {
+    const body = n.childForFieldName("body");
+    const seq = this.b.sequence();
+    seq.add(this.b.process(this.pyHead(n, body), this.range(n.firstChild ?? n)));
+    seq.add(this.walkBody(body));
+    return seq.done();
+  }
+
+  private walkPyTry(n: SyntaxNode): Flow {
+    let body = this.walkBody(
+      n.childForFieldName("body") ?? n.namedChildren.find((c) => BLOCK_TYPES.has(c.type)) ?? null,
+    );
+    const handlers: Flow[] = [];
+    let finallyBody: SyntaxNode | null = null;
+    for (const c of n.namedChildren) {
+      if (PY_EXCEPT_TYPES.has(c.type)) {
+        const block = c.namedChildren.find((x) => BLOCK_TYPES.has(x.type)) ?? null;
+        const seq = this.b.sequence();
+        seq.add(this.b.process(this.pyHead(c, block), this.range(c.firstChild ?? c)));
+        seq.add(this.walkBody(block));
+        handlers.push(seq.done());
+      } else if (c.type === "else_clause") {
+        // try の本体が最後まで進んだときだけ通る
+        const seq = this.b.sequence();
+        seq.add(body);
+        seq.add(this.walkBody(c.childForFieldName("body")));
+        body = seq.done();
+      } else if (c.type === "finally_clause") {
+        finallyBody = c.namedChildren.find((x) => BLOCK_TYPES.has(x.type)) ?? null;
+      }
+    }
+    return this.withFinally(this.b.tryCatch(body, handlers), finallyBody);
+  }
+
+  /** match: 各 case の見出し(`case [x, y]`)をノードにして、本体を続ける。`case _:` があれば、どれにも合わない経路は無い。 */
+  private walkPyMatch(n: SyntaxNode): Flow {
+    const subject = n.childForFieldName("subject");
+    const id = this.b.switchNode(
+      `match ${truncate(subject?.text ?? "", MAX_CONDITION)}`,
+      this.range(n.firstChild ?? n, subject ?? n),
+    );
+    const clauses = (n.childForFieldName("body")?.namedChildren ?? []).filter((c) => c.type === "case_clause");
+    const cases: Flow[] = [];
+    let hasDefault = false;
+    for (const c of clauses) {
+      const block = c.childForFieldName("consequence") ?? c.namedChildren.find((x) => BLOCK_TYPES.has(x.type)) ?? null;
+      const patterns = c.namedChildren.filter((x) => x.type === "case_pattern");
+      if (patterns.length === 1 && patterns[0].text.trim() === "_" && !c.childForFieldName("guard")) hasDefault = true;
+      const seq = this.b.sequence();
+      seq.add(this.b.process(this.pyHead(c, block), this.range(c.firstChild ?? c)));
+      seq.add(this.walkBody(block));
+      cases.push(seq.done());
+    }
+    return this.b.completeSwitch(id, cases, !hasDefault);
+  }
+}
+
+/** 構文木の中の、最初の ERROR / MISSING ノードの行(0 始まり)。見つからなければ対象の先頭行。 */
+function firstErrorRow(top: SyntaxNode): number {
+  const stack: SyntaxNode[] = [top];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.type === "ERROR" || n.isMissing) return n.startPosition.row;
+    for (let i = n.childCount - 1; i >= 0; i--) {
+      const c = n.child(i);
+      if (c && (c.hasError || c.isMissing)) stack.push(c);
+    }
+  }
+  return top.startPosition.row;
+}
+
+/** Python: 先頭の文字列だけの文(docstring)は、処理ではないので図に出さない。 */
+function withoutDocstring(stmts: SyntaxNode[]): SyntaxNode[] {
+  const first = stmts[0];
+  if (
+    first?.type === "expression_statement" &&
+    first.namedChildCount === 1 &&
+    first.namedChild(0)?.type === "string"
+  ) {
+    return stmts.slice(1);
+  }
+  return stmts;
 }
 
 /** 位置を含む、いちばん内側の関数。なければ、ソース順で最初の関数。それも無ければ null。 */
@@ -352,6 +543,11 @@ export function findTargetFunction(
       n = n.parent
     ) {
       if (FUNCTION_TYPES.has(n.type)) return n;
+      // Python: デコレータの行にカーソルがあるときは、そのデコレータが付いた関数
+      if (n.type === "decorated_definition") {
+        const def = n.childForFieldName("definition");
+        if (def && FUNCTION_TYPES.has(def.type)) return def;
+      }
     }
   }
   const stack: SyntaxNode[] = [root];
@@ -379,8 +575,15 @@ export function buildFlowFromTree(
   root: SyntaxNode,
   at: Point | undefined,
   fallbackLabel: string,
-): { nodes: FlowchartNode[]; edges: FlowchartEdge[]; functionLabel: string } {
-  const walker = new TreeWalker(0);
+): {
+  nodes: FlowchartNode[];
+  edges: FlowchartEdge[];
+  functionLabel: string;
+  /** 対象の関数(または対象のスクリプト全体)の中に、構文エラーがあるときの最初の行(0 始まり)。なければ undefined */
+  syntaxErrorRow?: number;
+} {
+  const isPython = root.type === "module"; // tree-sitter-python の根。C# は compilation_unit、TS/JS は program
+  const walker = new TreeWalker(0, isPython);
   const target = findTargetFunction(root, at);
 
   const name = target ? functionName(target) : null;
@@ -404,11 +607,16 @@ export function buildFlowFromTree(
     stmts = root.namedChildren;
   }
 
+  if (isPython) stmts = withoutDocstring(stmts);
   const flow = walker.walkSequence(stmts);
   const endRow = top.endPosition.row + 1;
   const result = walker.b.finish(startId, flow, "End", {
     startLine: endRow,
     endLine: endRow,
   });
-  return { ...result, functionLabel: label };
+  return {
+    ...result,
+    functionLabel: label,
+    syntaxErrorRow: top.hasError ? firstErrorRow(top) : undefined,
+  };
 }

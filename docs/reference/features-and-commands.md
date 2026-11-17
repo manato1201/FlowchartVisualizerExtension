@@ -29,6 +29,7 @@ VS Code のコマンド(コマンドパレット / エディタの右クリッ�
 |---|---|
 | `Flowchart: カーソル位置の関数からフローチャートを生成` | カーソルのある関数を図にする(関数の外ならファイルの先頭の関数) |
 | `Flowchart: 選択範囲からフローチャートを生成` | 選択範囲を含む関数を図にする |
+| `Flowchart: フローの JSON(IR)から図を描く` | コードの代わりに、フロー(ノード・線)の JSON を渡して描く。エディタの選択範囲(なければ全文)か、コマンドの引数(文字列 / オブジェクト)を読む。検証に通らなければ理由を帯で知らせる。仕様は [flowchart-ir.schema.json](flowchart-ir.schema.json) |
 | `Flowchart: HEAD とのフロー差分を表示` | Git の HEAD と比べ、変更のあった関数だけを差分表示にする |
 | `Flowchart: CodeBoarding の analysis.json を読み込む(全体)` | `.codeboarding/analysis.json` を読み、パンくずの「全体」から掘り下げる |
 | `Flowchart: Mermaidテキストをコピー` / `SVGとしてエクスポート` / `PNGとしてエクスポート` | 表示中の図を書き出す |
@@ -36,8 +37,11 @@ VS Code のコマンド(コマンドパレット / エディタの右クリッ�
 設定: `flowchart.autoRefresh`(保存時に更新)、`flowchart.followCursor`(カーソルのある関数が変わったら図を切替。既定オフ)。
 
 対応言語は、制御構文を波括弧で書く言語(C#・TypeScript・JavaScript・Java・Kotlin・Go・Rust など)。
-Python のようにインデントでブロックを表す言語は、図を作らず帯で「未対応」と知らせる。
-**検証してあるのは C# と TypeScript のみ**で、他は同じ構文規則に沿う範囲での対応。
+**Python** は、波括弧のスキャナを通さず tree-sitter だけで読む(`def`・`if/elif/else`・`for`/`while`(`else` つき)・`try/except/else/finally`・`with`・`match`・`return`/`raise`・`break`/`continue`)。HEAD との差分は未対応。
+Ruby のようにインデントでブロックを表す他の言語は、図を作らず帯で「未対応」と知らせる。
+**検証してあるのは C#・TypeScript・Python のみ**で、他は同じ構文規則に沿う範囲での対応。
+
+ノードが **300 個**を超える関数は、描く前に帯で知らせ、既定では簡易表示(「状態」ビュー = 分岐とループの要約)で描く。帯の「全体を描く」(または「フロー」タブ)で全体を描ける(IR は捨てない)。しきい値は `core/webview-bundle/views.js` の `RENDER_NODE_LIMIT` の 1 か所。
 
 
 ## おまけ: 魔方陣化(エンタメ用)

@@ -243,7 +243,10 @@
         var k = Math.min(r.width / content.w, r.height / content.h);
         var ox = (r.width - content.w * k) / 2;
         var oy = (r.height - content.h * k) / 2;
-        centerOn((e.clientX - r.left - ox) / k, (e.clientY - r.top - oy) / k);
+        // 図の外(ミニマップの余白)を押しても、図の端へ移動する(図の外へ飛ばない。折り返しで図が細くなると余白が広がる)
+        var cx = Math.min(content.w, Math.max(0, (e.clientX - r.left - ox) / k));
+        var cy = Math.min(content.h, Math.max(0, (e.clientY - r.top - oy) / k));
+        centerOn(cx, cy);
       };
       minimap.root.addEventListener("pointerdown", function (e) {
         mmDrag = true;

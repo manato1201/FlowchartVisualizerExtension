@@ -722,7 +722,8 @@ async function shot(page, name) {
       const big = makeLargeIR(330);
       assert.ok(big.nodes.length > 300);
       const t0 = Date.now();
-      await H.hostPost(page, { type: "render", ir: big, meta: { file: "Big.cs", functionName: "Big()", canJump: true } });
+      // view を明示する(ノード数ガードは、view の指定がないときだけ要約に切り替える)
+      await H.hostPost(page, { type: "render", ir: big, view: "flow", meta: { file: "Big.cs", functionName: "Big()", canJump: true } });
       await H.waitForNodes(page, big.nodes.length, 120000);
       const renderMs = Date.now() - t0;
       await sleep(400);
@@ -765,6 +766,151 @@ async function shot(page, name) {
       assert.equal(fits, true);
       await shot(page, "large-330");
       assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    // ---------------------------------------------------------------- ノード数ガード
+    const Views = require("../webview-bundle/views.js");
+    const bigDefault = makeLargeIR(330);
+    const stateCount = Views.countVisible(bigDefault, "state");
+    const bigMeta = { file: "Big.cs", functionName: "Big()", canJump: true };
+
+    await test("ノード数ガード: 300 超は、描く前に帯で知らせ、既定では簡易表示(状態ビュー)で軽く描く。IR は捨てない", async () => {
+      assert.ok(bigDefault.nodes.length > Views.RENDER_NODE_LIMIT);
+      const { page, errors } = await H.openPage(browser, port, { width: 1280, height: 800 });
+      const t0 = Date.now();
+      await H.hostPost(page, { type: "render", ir: bigDefault, meta: bigMeta });
+      await H.waitForNodes(page, stateCount, 60000);
+      const guardedMs = Date.now() - t0;
+      console.log(`       ガードあり(既定): ${bigDefault.nodes.length} ノード → 簡易表示 ${stateCount} ノード / 描画 ${guardedMs}ms`);
+      const dbg = await page.evaluate(() => window.__flowchartDebug());
+      assert.equal(dbg.view, "state");
+      assert.equal(dbg.userView, "flow", "利用者が選んだビューは変えない(要約は一時的な切り替え)");
+      assert.equal(dbg.bannerMode, "guard");
+      const banner = await page.$eval("#banner-text", (e) => e.textContent);
+      assert.match(banner, new RegExp(`${bigDefault.nodes.length} 個`));
+      assert.match(banner, /簡易表示/);
+      assert.match(banner, /目安/);
+      assert.equal(await page.$eval("#banner", (e) => e.dataset.kind), "info", "警告であってエラーではない");
+      assert.equal(await page.$eval("#banner-action", (e) => e.hidden), false, "「全体を描く」がある");
+      assert.equal(
+        await page.$eval('#views button[aria-checked="true"]', (b) => b.dataset.view),
+        "state",
+        "いま描いているビューのタブが選ばれている",
+      );
+      const rendered = (await H.sent(page)).filter((m) => m.type === "rendered").pop();
+      assert.equal(rendered.guarded, true);
+      assert.equal(rendered.totalNodes, bigDefault.nodes.length);
+      // IR は残っていて、「フロー」タブで全体を描ける(下のテスト)
+      assert.equal(await page.$eval('#views button[data-view="flow"]', (b) => b.disabled), false);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test("ノード数ガード: 「全体を描く」で全体を描ける(描く前に所要時間の目安を出す)。同じ関数の再描画でも全体のまま。別の関数は再び要約", async () => {
+      const { page } = await H.openPage(browser, port, { width: 1280, height: 800 });
+      await H.hostPost(page, { type: "render", ir: bigDefault, meta: bigMeta });
+      await H.waitForNodes(page, stateCount, 60000);
+      const t0 = Date.now();
+      await page.click("#banner-action");
+      await H.waitForNodes(page, bigDefault.nodes.length, 120000);
+      console.log(`       「全体を描く」: ${bigDefault.nodes.length} ノード / 描画 ${Date.now() - t0}ms`);
+      assert.equal((await page.evaluate(() => window.__flowchartDebug())).view, "flow");
+      assert.equal(await page.$eval("#banner-action", (e) => e.hidden), true, "全体を描いたあとは、ボタンは出さない");
+      assert.match(await page.$eval("#banner-text", (e) => e.textContent), /描画に.*秒/, "多いことは帯に残る");
+      // 同じ関数を保存して描き直しても、利用者が選んだ全体のまま
+      await H.hostPost(page, { type: "render", ir: bigDefault, meta: bigMeta });
+      await H.waitForNodes(page, bigDefault.nodes.length, 120000);
+      // 別の関数なら、また要約から
+      await H.hostPost(page, { type: "render", ir: bigDefault, meta: { ...bigMeta, functionName: "Other()" } });
+      await H.waitForNodes(page, stateCount, 60000);
+      assert.equal((await page.evaluate(() => window.__flowchartDebug())).view, "state");
+      await page.close();
+    });
+
+    await test("ノード数ガード: 「フロー」タブを自分で選べば全体を描く。小さな関数に移れば、帯は消えて元のビューに戻る", async () => {
+      const { page } = await H.openPage(browser, port, { width: 1280, height: 800 });
+      await H.hostPost(page, { type: "render", ir: bigDefault, meta: bigMeta });
+      await H.waitForNodes(page, stateCount, 60000);
+      await page.click('#views button[data-view="flow"]');
+      await H.waitForNodes(page, bigDefault.nodes.length, 120000);
+      assert.equal((await page.evaluate(() => window.__flowchartDebug())).view, "flow");
+      await renderIR(page, makeSampleIR(), { file: "Player.cs", functionName: "Update()", canJump: true });
+      const dbg = await page.evaluate(() => window.__flowchartDebug());
+      assert.equal(dbg.view, "flow", "小さな関数は選んだビューのまま");
+      assert.equal(await page.$eval("#banner", (e) => e.hidden), true, "ガードの帯は消える");
+      await page.close();
+    });
+
+    await test("ノード数ガード: ホストが view を明示したときは、要約に切り替えない", async () => {
+      const { page } = await H.openPage(browser, port, { width: 1280, height: 800 });
+      await H.hostPost(page, { type: "render", ir: bigDefault, view: "flow", meta: { ...bigMeta, functionName: "Explicit()" } });
+      await H.waitForNodes(page, bigDefault.nodes.length, 120000);
+      assert.equal((await page.evaluate(() => window.__flowchartDebug())).view, "flow");
+      assert.equal(await page.$eval("#banner-action", (e) => e.hidden), true);
+      await page.close();
+    });
+
+    await test("外部から渡された IR(信用しない入力): 悪意のあるラベルでも、文字としてそのまま表示され、HTML・スクリプトとして動かない。図の構造も変わらない", async () => {
+      const { parseFlowchartIRInput } = require("../dist/flowchart-ir/ir-input");
+      const evil = [
+        '"]; n99["injected',
+        "<img src=x onerror=alert(1)>",
+        "<script>alert(1)</script>",
+        '%%{init: {"flowchart": {"htmlLabels": true}}}%%',
+        "`markdown first`",
+        "a #lt;b#gt; c",
+        "&lt;b&gt;&amp; 100%",
+        "x --> y",
+      ];
+      const input = {
+        nodes: [
+          { id: "n1", kind: "start", label: "start" },
+          ...evil.map((label, i) => ({ id: "e" + i, kind: "process", label })),
+          { id: "n2", kind: "end", label: "end" },
+        ],
+        edges: [{ from: "n1", to: "e0" }, ...evil.slice(1).map((_, i) => ({ from: "e" + i, to: "e" + (i + 1) })), { from: "e" + (evil.length - 1), to: "n2" }],
+      };
+      const r = parseFlowchartIRInput(input);
+      assert.equal(r.ok, true, JSON.stringify(r.errors));
+      const { page, errors } = await H.openPage(browser, port);
+      await page.evaluate(() => {
+        window.__alerts = 0;
+        window.alert = () => window.__alerts++;
+      });
+      await H.hostPost(page, { type: "render", ir: r.ir, meta: { file: r.ir.sourceFile, functionName: "start", canJump: false, mode: "ir" } });
+      await H.waitForNodes(page, r.ir.nodes.length);
+      await sleep(300);
+      const shown = await page.$$eval("#stage g.node", (els) => els.map((e) => ({ id: e.dataset.nodeId, text: e.textContent.replace(/\s+/g, "").replace(/L\d+$/, "") })));
+      for (const n of r.ir.nodes) {
+        const got = shown.find((s) => s.id === n.id);
+        assert.ok(got, "ノードが描かれている: " + n.id);
+        assert.equal(got.text, Views.truncateLabel(n.label, Views.LABEL_MAX).replace(/\s+/g, ""), "ラベルが文字のまま(エンティティ・HTML として解釈されない): " + n.id);
+      }
+      assert.equal(await page.evaluate(() => window.__alerts), 0, "スクリプトが動かない");
+      assert.equal(await page.$$eval("#stage img, #stage script, #stage foreignObject, #stage a", (e) => e.length), 0, "HTML 要素が入らない");
+      assert.equal(await page.$eval("#banner", (e) => e.hidden), true, "描画エラーの帯が出ていない");
+      assert.equal(await page.$$eval("#stage g.node", (e) => e.length), r.ir.nodes.length, "ノードが増えも減りもしない");
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await test("読みやすさ: 長いラベルは折り返して(複数行)、全文はツールチップで見られる。短いラベルは1行のまま", async () => {
+      const { page } = await H.openPage(browser, port);
+      const ir = makeSampleIR();
+      ir.nodes.find((n) => n.id === "n7").label = "for (int i = 0; i < enemies.Length; i++)";
+      await renderIR(page, ir);
+      const lines = (id) =>
+        page.$$eval(`#stage g.node[data-node-id="${id}"] text tspan`, (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
+      const long = await lines("n7");
+      assert.ok(long.length >= 3, "折り返して複数行(本文2行+行番号): " + JSON.stringify(long));
+      assert.ok(long.every((l) => l.length <= 26), "1行が長すぎない: " + JSON.stringify(long));
+      const short = await lines("n3");
+      assert.equal(short.length, 2, "短いラベルは本文1行+行番号: " + JSON.stringify(short));
+      const b = await nodeBox(page, "n7");
+      await page.mouse.move(b.x, b.y);
+      await page.waitForSelector("#tooltip:not([hidden])");
+      assert.ok((await page.$eval("#tooltip", (e) => e.textContent)).includes("for (int i = 0; i < enemies.Length; i++)"));
       await page.close();
     });
   } finally {

@@ -8,6 +8,7 @@ import {
   parseCodeBoardingAnalysis,
 } from "../../core/architecture/codeboarding-adapter";
 import { allAdded, diffIR, type IRDiffResult } from "../../core/diff/ir-diff";
+import { parseFlowchartIRInput } from "../../core/flowchart-ir/ir-input";
 import type { FlowchartIR } from "../../core/flowchart-ir/schema";
 import { emitMagicCircle } from "../../core/render/magic-circle-emitter";
 import { emitMermaid } from "../../core/render/mermaid-emitter";
@@ -16,6 +17,7 @@ import {
   FlowchartUserError,
   getCallableSymbols,
   isFlowSupportedLanguage,
+  isHeadDiffSupportedLanguage,
   isFlowSupportedPath,
   normalizeFunctionName,
 } from "./flowExtractor";
@@ -41,6 +43,8 @@ let lastSource: { uri: vscode.Uri } | undefined;
 let lastKey = "";
 /** いま表示しているのが HEAD との差分か。差分を見ている間は、カーソル追従で図を上書きしない。 */
 let showingDiff = false;
+/** いま表示しているのが、外部から渡された IR(JSON)か。ソースの関数ではないので、カーソル追従で上書きしない。 */
+let showingExternalIr = false;
 /** 「再試行」で同じ操作をもう一度行う(フロー生成・差分・analysis.json の読み込みのどれでも)。 */
 let lastRun: (() => Promise<void>) | undefined;
 /**
@@ -140,6 +144,11 @@ export function activate(context: vscode.ExtensionContext): FlowchartTestApi {
       await generateMagicCircleAndSave(context);
     }),
 
+    // 引数に「フローの JSON」(文字列またはオブジェクト)を渡せる。無ければ、エディタの選択範囲(なければ全文)を読む
+    vscode.commands.registerCommand("flowchart.renderFromIrJson", async (arg?: unknown) => {
+      await renderFromIrJson(context, arg);
+    }),
+
     vscode.commands.registerCommand("flowchart.diffAgainstHead", async () => {
       await diffAgainstHead(context);
     }),
@@ -161,7 +170,7 @@ export function activate(context: vscode.ExtensionContext): FlowchartTestApi {
 
     // ---- カーソル追従(既定はオフ)。カーソルのある関数が変わったら図を差し替える ----
     vscode.window.onDidChangeTextEditorSelection((e) => {
-      if (!isFollowCursorEnabled() || !getCurrentPanel() || showingDiff) return;
+      if (!isFollowCursorEnabled() || !getCurrentPanel() || showingDiff || showingExternalIr) return;
       const doc = e.textEditor.document;
       if (!isFlowSupportedLanguage(doc.languageId) || (doc.uri.scheme !== "file" && doc.uri.scheme !== "untitled")) return;
       if (followTimer) clearTimeout(followTimer);
@@ -244,6 +253,49 @@ async function generateAt(
   }
 }
 
+/**
+ * 外部(VLMAutoReplayTool・ローカル LLM など)から渡された「フローの JSON」を、検証して図にする。
+ * 入力は信用しない: 検証(未知のキー・ID の重複・存在しない端の線など)に通らなければ、理由を帯で知らせて描かない。
+ * ソースのコードとは対応しないので、ノードからのジャンプ・保存時の更新・カーソル追従は使わない。
+ */
+async function renderFromIrJson(context: vscode.ExtensionContext, arg?: unknown): Promise<void> {
+  lastRun = () => renderFromIrJson(context, arg);
+  try {
+    let input: unknown = arg;
+    if (input === undefined) {
+      const editor = getTargetEditor();
+      if (!editor) {
+        throw new FlowchartUserError("フローの JSON を開いたエディタで実行するか、コマンドの引数に JSON を渡してください。");
+      }
+      input = editor.selection.isEmpty ? editor.document.getText() : editor.document.getText(editor.selection);
+    }
+    const r = parseFlowchartIRInput(input);
+    if (!r.ok) {
+      throw new FlowchartUserError(`フローの JSON を読めません(${r.errors.length} 件):\n${r.errors.map((e) => "・" + e).join("\n")}`);
+    }
+    lastSource = undefined;
+    showingDiff = false;
+    showingExternalIr = true;
+    lastMermaidText = emitMermaid(r.ir);
+    getOrCreateFlowchartPanel(context);
+    const start = r.ir.nodes.find((n) => n.kind === "start");
+    const notes = ["外部から受け取ったフローの JSON を描画しています(ソースとは対応しません)", ...r.warnings.map((w) => "注意: " + w)];
+    postToPanel({
+      type: "render",
+      ir: r.ir,
+      meta: {
+        file: r.ir.sourceFile,
+        functionName: start?.label,
+        canJump: false,
+        mode: "ir",
+        banner: notes.join(" / "),
+      },
+    });
+  } catch (err) {
+    reportError(context, err);
+  }
+}
+
 /** 図を Webview に渡す。ビュー切替・ジャンプ・差分は IR(図の元データ)をそのまま渡して Webview 側が行う。 */
 function publishIR(
   context: vscode.ExtensionContext,
@@ -252,6 +304,7 @@ function publishIR(
   extra: { mode?: "flow" | "diff"; banner?: string } = {},
 ): void {
   lastSource = { uri: doc.uri };
+  showingExternalIr = false;
   lastMermaidText = emitMermaid(ir);
   lastKey = keyOf(ir, doc);
   showingDiff = extra.mode === "diff";
@@ -356,6 +409,9 @@ async function diffAgainstHead(context: vscode.ExtensionContext): Promise<void> 
   try {
     if (!isFlowSupportedLanguage(doc.languageId)) {
       throw new FlowchartUserError(`この言語(${doc.languageId})は未対応です。`);
+    }
+    if (!isHeadDiffSupportedLanguage(doc.languageId)) {
+      throw new FlowchartUserError(`HEAD との差分は、この言語(${doc.languageId})には未対応です。図の生成は使えます。`);
     }
     const head = await getHeadText(doc);
     if (head.kind === "error") throw new FlowchartUserError(head.message);

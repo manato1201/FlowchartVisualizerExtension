@@ -21,6 +21,7 @@ const grammars = [
   "tree-sitter-typescript.wasm",
   "tree-sitter-tsx.wasm",
   "tree-sitter-javascript.wasm",
+  "tree-sitter-python.wasm",
 ];
 
 for (const file of grammars) {
