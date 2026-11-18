@@ -817,8 +817,19 @@
     }
   }
 
+  // コピーのあとだけ、アイコンを 1.4 秒チェックに替える(アイコンスワップ)。
+  // 即時の差し替えで動きではない。Rider / Visual Studio は通知を出さないため、押したことの確認になる。
+  var copyIconTimer = null;
   $("btn-copy").addEventListener("click", function () {
-    if (state.cleanMermaid) post({ type: "copyText", text: state.cleanMermaid });
+    if (!state.cleanMermaid) return;
+    post({ type: "copyText", text: state.cleanMermaid });
+    var use = $("btn-copy").querySelector("use");
+    if (!use) return;
+    use.setAttribute("href", "#i-check");
+    clearTimeout(copyIconTimer);
+    copyIconTimer = setTimeout(function () {
+      use.setAttribute("href", "#i-copy");
+    }, 1400);
   });
   function setMenu(open) {
     $("save-wrap").dataset.open = String(open);

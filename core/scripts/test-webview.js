@@ -398,6 +398,8 @@ async function shot(page, name) {
       const copy = (await H.sent(page)).find((m) => m.type === "copyText");
       assert.ok(copy.text.startsWith("flowchart TD"));
       assert.ok(!/<br\/>L\d/.test(copy.text), "コピー用には行番号を入れない");
+      assert.equal(await page.$eval("#btn-copy use", (u) => u.getAttribute("href")), "#i-check", "コピー直後はアイコンがチェックに替わる");
+      await page.waitForFunction(() => document.querySelector("#btn-copy use").getAttribute("href") === "#i-copy", { timeout: 3000 });
       // ホストからの書き出し要求(コマンドパレット経由)にも答える
       await H.hostPost(page, { type: "exportSvg" });
       await page.waitForFunction(() => window.__sent.some((m) => m.type === "exportSvgResult"));
